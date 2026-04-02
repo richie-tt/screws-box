@@ -32,7 +32,7 @@
   5. `-tags dev` build reads templates/static files from disk; production build serves from embedded FS
 **Plans:** 1 plan
 Plans:
-- [ ] 01-01-PLAN.md — Go project skeleton with chi router, embedded assets, graceful shutdown, placeholder page, and tests
+- [x] 01-01-PLAN.md — Go project skeleton with chi router, embedded assets, graceful shutdown, placeholder page, and tests
 
 ### Phase 2: Database Foundation
 **Goal**: The application opens SQLite with all correctness pragmas set and the full normalized schema in place before any feature code runs
