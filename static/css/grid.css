@@ -1,0 +1,218 @@
+/* ==========================================================================
+   Screws Box — Grid CSS
+   Chessboard grid layout for screws organizer.
+   Design: Pico CSS 2.x base + custom CSS Grid.
+   Phase 3: Static mockup styles.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. CSS Custom Properties — Light theme (default) + Dark theme override
+   -------------------------------------------------------------------------- */
+
+:root {
+  /* Chessboard cell colors — warm tones for workshop feel */
+  --cell-light: hsl(40, 20%, 95%);
+  --cell-dark: hsl(40, 15%, 85%);
+  --cell-empty-opacity: 0.6;
+  --grid-gap: 2px;
+  --cell-min-width: 4rem;       /* 64px */
+  --cell-min-height: 3.5rem;    /* 56px */
+  --row-header-width: 3rem;     /* 48px */
+  --col-header-height: 2.5rem;  /* 40px */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --cell-light: hsl(220, 10%, 25%);
+    --cell-dark: hsl(220, 10%, 18%);
+    --cell-empty-opacity: 0.5;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   2. Search bar (sticky top, always accessible)
+   -------------------------------------------------------------------------- */
+
+.search-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: var(--pico-background-color);
+  padding: 0.75rem 1rem;
+}
+
+.search-bar input[type="search"] {
+  margin-bottom: 0;
+}
+
+.search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 21;
+  background-color: var(--pico-background-color);
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.search-dropdown[hidden] {
+  display: none;
+}
+
+.search-dropdown ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-dropdown li {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  cursor: pointer;
+}
+
+.search-dropdown li:last-child {
+  border-bottom: none;
+}
+
+.search-dropdown li:hover {
+  background-color: var(--pico-primary-focus);
+}
+
+/* --------------------------------------------------------------------------
+   3. Grid wrapper — horizontal scroll on mobile
+   -------------------------------------------------------------------------- */
+
+.grid-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 1rem;
+}
+
+/* --------------------------------------------------------------------------
+   4. Grid container
+   -------------------------------------------------------------------------- */
+
+.grid-container {
+  display: grid;
+  /* Phase 4: replace repeat(5, ...) with repeat(var(--grid-cols), ...) set via inline style */
+  grid-template-columns: var(--row-header-width) repeat(5, minmax(var(--cell-min-width), 1fr));
+  gap: var(--grid-gap);
+}
+
+/* --------------------------------------------------------------------------
+   5. Grid headers — sticky column/row headers
+   -------------------------------------------------------------------------- */
+
+.grid-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  background-color: var(--pico-card-background-color);
+  user-select: none;
+}
+
+.col-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: var(--col-header-height);
+}
+
+.row-header {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: var(--row-header-width);
+  min-height: var(--cell-min-height);
+}
+
+.grid-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  min-width: var(--row-header-width);
+  min-height: var(--col-header-height);
+}
+
+/* --------------------------------------------------------------------------
+   6. Grid cells — chessboard pattern, empty state, hover
+   -------------------------------------------------------------------------- */
+
+.grid-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--cell-min-width);
+  min-height: var(--cell-min-height);
+  cursor: pointer;
+  transition: opacity 0.2s ease, box-shadow 0.2s ease, filter 0.15s ease;
+}
+
+.cell-light {
+  background-color: var(--cell-light);
+}
+
+.cell-dark {
+  background-color: var(--cell-dark);
+}
+
+.cell-coord {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.cell-count {
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--pico-muted-color);
+}
+
+.cell-empty {
+  opacity: var(--cell-empty-opacity);
+}
+
+.grid-cell:hover {
+  filter: brightness(1.05);
+}
+
+/* --------------------------------------------------------------------------
+   7. Search highlight states
+   -------------------------------------------------------------------------- */
+
+.grid-container.search-active .grid-cell {
+  opacity: 0.4;
+}
+
+.grid-container.search-active .grid-cell.highlight {
+  opacity: 1;
+  box-shadow: 0 0 0 3px var(--pico-primary);
+}
+
+.grid-container.search-active .grid-cell.highlight.cell-empty {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   8. Search dropdown fade-in animation
+   -------------------------------------------------------------------------- */
+
+.search-dropdown {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.search-dropdown.visible {
+  opacity: 1;
+}
