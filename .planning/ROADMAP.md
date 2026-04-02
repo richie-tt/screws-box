@@ -72,7 +72,9 @@ Plans:
   2. Every cell displays its correct coordinate label (e.g., "1A", "3B", "10E") matching `labelFor()` output
   3. A cell that contains items shows the item count; an empty cell shows zero or an empty indicator
   4. Changing the shelf dimensions in the database and restarting re-renders the grid with the new size
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 04-01-PLAN.md — Store GetGridData + dynamic grid template wired to live DB data on GET /
 **UI hint**: yes
 
 ### Phase 5: Item CRUD Backend
@@ -157,7 +159,7 @@ Plans:
 | 1. Project Skeleton | 0/1 | Planning complete | - |
 | 2. Database Foundation | 1/1 | Complete   | 2026-04-02 |
 | 3. Grid UI Design | 1/1 | Complete   | 2026-04-02 |
-| 4. Grid Rendering | 0/? | Not started | - |
+| 4. Grid Rendering | 0/1 | Planning complete | - |
 | 5. Item CRUD Backend | 0/2 | Planning complete | - |
 | 6. Item CRUD Frontend | 0/? | Not started | - |
 | 7. Tag Autocomplete | 0/? | Not started | - |
@@ -167,4 +169,4 @@ Plans:
 
 ---
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-02 after Phase 3 planning*
+*Last updated: 2026-04-02 after Phase 4 planning*
