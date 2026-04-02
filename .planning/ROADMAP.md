@@ -9,7 +9,7 @@
 
 - [ ] **Phase 1: Project Skeleton** — Running Go binary with chi, embedded assets, 0.0.0.0 binding, graceful shutdown
 - [x] **Phase 2: Database Foundation** — SQLite store with correct pragmas, normalized schema, coordinate system (completed 2026-04-02)
-- [ ] **Phase 3: Grid UI Design** — Visual chessboard design via frontend-design plugin, responsive layout
+- [x] **Phase 3: Grid UI Design** — Visual chessboard design via frontend-design plugin, responsive layout (completed 2026-04-02)
 - [ ] **Phase 4: Grid Rendering** — Server-rendered grid with cell labels, item counts, configurable dimensions
 - [ ] **Phase 5: Item CRUD Backend** — Store + API endpoints for create/read/update/delete items with tags
 - [ ] **Phase 6: Item CRUD Frontend** — Click container to add/edit/delete items; form wired to API
@@ -58,7 +58,9 @@ Plans:
   3. The layout is usable on a 375px-wide phone screen without horizontal scroll for a 5x10 grid
   4. A search input field is visible and prominently placed above or beside the grid
   5. Container cells have a visually distinct highlighted state (for search results) that is clearly different from the default state
-**Plans**: TBD
+**Plans:** 1/1 plans complete
+Plans:
+- [x] 03-01-PLAN.md — Chessboard grid CSS + HTML mockup with sticky headers, search bar, responsive layout, and highlight states
 **UI hint**: yes
 
 ### Phase 4: Grid Rendering
@@ -119,7 +121,7 @@ Plans:
 **Requirements**: SRCH-02, SRCH-03
 **Success Criteria** (what must be TRUE):
   1. `GET /api/search?q=m6` returns items whose name contains "m6" (case-insensitive) or whose tags exactly match "m6"
-  2. Partial name matching works: searching "spręż" finds items named "sprężynowa" or "sprężyna"
+  2. Partial name matching works: searching "sprez" finds items named "sprezynowa" or "sprezyna"
   3. Tag search uses exact match via the junction table — "m6" does NOT match items tagged "m60"
   4. Each result includes the item name, all its tags, and the container position label (e.g., "3B")
   5. An empty query returns no results (not all items)
@@ -131,7 +133,7 @@ Plans:
 **Requirements**: SRCH-01, SRCH-04, SRCH-05, SRCH-06
 **Success Criteria** (what must be TRUE):
   1. Typing in the search field triggers a fetch to `/api/search` and shows results without pressing Enter (as-you-type, debounced)
-  2. Results appear as a list showing item name, tags, and container position (e.g., "M6 sprężynowa [m6, sprężynowa] → 3B")
+  2. Results appear as a list showing item name, tags, and container position (e.g., "M6 sprezynowa [m6, sprezynowa] -> 3B")
   3. Containers matching the search are visually highlighted on the grid; all other containers are visually de-emphasized
   4. Clearing the search field removes all highlights and the results list
   5. The user can navigate through results with keyboard arrow keys and press Enter/Space to focus the corresponding grid cell
@@ -154,7 +156,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Project Skeleton | 0/1 | Planning complete | - |
 | 2. Database Foundation | 1/1 | Complete   | 2026-04-02 |
-| 3. Grid UI Design | 0/? | Not started | - |
+| 3. Grid UI Design | 1/1 | Complete   | 2026-04-02 |
 | 4. Grid Rendering | 0/? | Not started | - |
 | 5. Item CRUD Backend | 0/2 | Planning complete | - |
 | 6. Item CRUD Frontend | 0/? | Not started | - |
@@ -165,4 +167,4 @@ Plans:
 
 ---
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-02 after Phase 5 planning*
+*Last updated: 2026-04-02 after Phase 3 planning*

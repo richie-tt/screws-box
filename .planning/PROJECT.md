@@ -12,7 +12,8 @@ Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elem
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] Dostęp sieciowy (nie tylko localhost) — Validated in Phase 1: Project Skeleton
+- [x] Dane przechowywane w SQLite — Validated in Phase 2: Database Foundation
 
 ### Active
 
@@ -24,9 +25,6 @@ Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elem
 - [ ] Wyszukiwanie tekstowe po nazwie lub tagu
 - [ ] Wyniki wyszukiwania jako lista z pozycjami (np. "3B")
 - [ ] Wizualne podświetlenie pasujących pojemników na siatce podczas wyszukiwania
-- [ ] Dane przechowywane w SQLite
-- [ ] Dostęp sieciowy (nie tylko localhost)
-
 ### Out of Scope
 
 - Zarządzanie ilościami/inwentaryzacja — nie potrzebne w v1
