@@ -1,0 +1,6 @@
+/* Screws Box - custom styles */
+/* Phase 1: minimal, Pico CSS handles most styling */
+body > footer {
+    text-align: center;
+    opacity: 0.6;
+}
