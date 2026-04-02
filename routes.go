@@ -17,6 +17,7 @@ func newRouter() http.Handler {
 	r.Use(middleware.RequestID)
 
 	r.Get("/", handleIndex)
+	r.Get("/grid", handleGrid)
 
 	r.Handle("/static/*", http.StripPrefix("/static/",
 		http.FileServerFS(mustSubFS(contentFS, "static"))))
