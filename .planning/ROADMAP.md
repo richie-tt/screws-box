@@ -8,7 +8,7 @@
 ## Phases
 
 - [ ] **Phase 1: Project Skeleton** — Running Go binary with chi, embedded assets, 0.0.0.0 binding, graceful shutdown
-- [ ] **Phase 2: Database Foundation** — SQLite store with correct pragmas, normalized schema, coordinate system
+- [x] **Phase 2: Database Foundation** — SQLite store with correct pragmas, normalized schema, coordinate system (completed 2026-04-02)
 - [ ] **Phase 3: Grid UI Design** — Visual chessboard design via frontend-design plugin, responsive layout
 - [ ] **Phase 4: Grid Rendering** — Server-rendered grid with cell labels, item counts, configurable dimensions
 - [ ] **Phase 5: Item CRUD Backend** — Store + API endpoints for create/read/update/delete items with tags
@@ -44,9 +44,9 @@ Plans:
   3. Schema contains tables: `shelf`, `container`, `item`, `tag`, `item_tag` — visible via `sqlite3 .schema`
   4. A single `labelFor(col, row int) string` function in `models.go` returns correct labels (e.g., col=3 row=2 → "3B")
   5. Deleting a container cascades correctly to its items (foreign key constraint enforced, not silently ignored)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 02-01-PLAN.md — SQLite Store with pragmas, 5-table schema, labelFor(), default shelf seeding, and tests
+- [x] 02-01-PLAN.md — SQLite Store with pragmas, 5-table schema, labelFor(), default shelf seeding, and tests
 
 ### Phase 3: Grid UI Design
 **Goal**: A static HTML mockup defines the visual design for the chessboard grid, container cells, and search bar — ready for server-side wiring
@@ -153,7 +153,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Project Skeleton | 0/1 | Planning complete | - |
-| 2. Database Foundation | 0/1 | Planning complete | - |
+| 2. Database Foundation | 1/1 | Complete   | 2026-04-02 |
 | 3. Grid UI Design | 0/? | Not started | - |
 | 4. Grid Rendering | 0/? | Not started | - |
 | 5. Item CRUD Backend | 0/2 | Planning complete | - |
