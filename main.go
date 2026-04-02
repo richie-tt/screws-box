@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,6 +27,18 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Database — per D-01: DB_PATH env var, default ./screws_box.db
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "./screws_box.db"
+	}
+
+	var store Store
+	if err := store.Open(dbPath); err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer store.Close()
 
 	port := os.Getenv("PORT")
 	if port == "" {
