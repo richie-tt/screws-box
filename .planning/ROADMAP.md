@@ -161,6 +161,11 @@ Plans:
   2. The resize is blocked (not executed) if any items would be orphaned; the grid remains unchanged
   3. Resizing to a larger grid succeeds immediately and new empty cells appear in the correct positions
   4. Resizing a grid where all removed cells are empty succeeds without any warning
+**Plans:** 2 plans
+Plans:
+- [ ] 10-01-PLAN.md — Backend: ResizeShelf store method + PUT /api/shelf/resize endpoint with TDD tests
+- [ ] 10-02-PLAN.md — Frontend: settings gear icon, settings panel, blocking modal, wired to resize API
+**UI hint**: yes
 
 ## Progress
 
@@ -175,8 +180,8 @@ Plans:
 | 7. Tag Autocomplete | 1/1 | Complete   | 2026-04-03 |
 | 8. Search Backend | 0/1 | Planning complete | - |
 | 9. Search Frontend | 1/2 | In Progress|  |
-| 10. Resilience | 0/? | Not started | - |
+| 10. Resilience | 0/2 | Planning complete | - |
 
 ---
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-03 after Phase 9 planning*
+*Last updated: 2026-04-03 after Phase 10 planning*
