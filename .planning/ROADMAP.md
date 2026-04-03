@@ -104,7 +104,7 @@ Plans:
   5. Deleting an item removes it from the container; the cell count updates immediately
 **Plans:** 2 plans
 Plans:
-- [ ] 06-01-PLAN.md — Remove dialog HTML, switch Polish to English, add expanded-cell/tag-chip/pulse CSS
+- [x] 06-01-PLAN.md — Remove dialog HTML, switch Polish to English, add expanded-cell/tag-chip/pulse CSS
 - [ ] 06-02-PLAN.md — Complete grid.js rewrite for inline cell expansion CRUD with browser verification
 **UI hint**: yes
 
