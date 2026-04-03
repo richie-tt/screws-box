@@ -20,7 +20,7 @@
 - [x] **ITEM-03**: User can edit item name and tags
 - [x] **ITEM-04**: User can delete item
 - [x] **ITEM-05**: One container can hold multiple different items
-- [ ] **ITEM-06**: Tag autocomplete suggests existing tags when adding/editing items
+- [x] **ITEM-06**: Tag autocomplete suggests existing tags when adding/editing items
 
 ### Search
 
@@ -76,7 +76,7 @@
 | ITEM-03 | Phase 6 | Complete |
 | ITEM-04 | Phase 5 | Complete |
 | ITEM-05 | Phase 5 | Complete |
-| ITEM-06 | Phase 7 | Pending |
+| ITEM-06 | Phase 7 | Complete |
 | SRCH-01 | Phase 9 | Pending |
 | SRCH-02 | Phase 8 | Pending |
 | SRCH-03 | Phase 8 | Pending |

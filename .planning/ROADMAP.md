@@ -13,7 +13,7 @@
 - [ ] **Phase 4: Grid Rendering** — Server-rendered grid with cell labels, item counts, configurable dimensions
 - [x] **Phase 5: Item CRUD Backend** — Store + API endpoints for create/read/update/delete items with tags (completed 2026-04-03)
 - [ ] **Phase 6: Item CRUD Frontend** — Click container to add/edit/delete items; form wired to API
-- [ ] **Phase 7: Tag Autocomplete** — Existing tags suggested when adding or editing items
+- [x] **Phase 7: Tag Autocomplete** — Existing tags suggested when adding or editing items (completed 2026-04-03)
 - [ ] **Phase 8: Search Backend** — SearchItems query with exact tag match and LIKE on names, /api/search endpoint
 - [ ] **Phase 9: Search Frontend** — As-you-type results, grid cell highlighting, keyboard navigation
 - [ ] **Phase 10: Resilience** — Grid resize guard: warn on occupied cells, block if items would be orphaned
@@ -117,9 +117,9 @@ Plans:
   2. Selecting a suggestion fills the tag field without requiring the user to finish typing
   3. A tag that does not yet exist can still be entered freely (autocomplete is a suggestion, not a constraint)
   4. The suggestion list updates as the user types (not a static pre-loaded list)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 07-01-PLAN.md — Autocomplete dropdown component + wiring to add/edit forms
+- [x] 07-01-PLAN.md — Autocomplete dropdown component + wiring to add/edit forms
 **UI hint**: yes
 
 ### Phase 8: Search Backend
@@ -171,7 +171,7 @@ Plans:
 | 4. Grid Rendering | 0/1 | Planning complete | - |
 | 5. Item CRUD Backend | 2/2 | Complete   | 2026-04-03 |
 | 6. Item CRUD Frontend | 0/2 | In Progress|  |
-| 7. Tag Autocomplete | 0/? | Not started | - |
+| 7. Tag Autocomplete | 1/1 | Complete   | 2026-04-03 |
 | 8. Search Backend | 0/? | Not started | - |
 | 9. Search Frontend | 0/? | Not started | - |
 | 10. Resilience | 0/? | Not started | - |
