@@ -134,7 +134,7 @@ Plans:
   5. An empty query returns no results (not all items)
 **Plans:** 1 plan
 Plans:
-- [ ] 07-01-PLAN.md — Autocomplete dropdown component + wiring to add/edit forms
+- [ ] 08-01-PLAN.md — SearchItems store method + handleSearch endpoint with full test coverage
 
 ### Phase 9: Search Frontend
 **Goal**: Users can find any part in the organizer by typing its name or tag and immediately see which containers hold it, both as a list and highlighted on the grid
@@ -146,9 +146,10 @@ Plans:
   3. Containers matching the search are visually highlighted on the grid; all other containers are visually de-emphasized
   4. Clearing the search field removes all highlights and the results list
   5. The user can navigate through results with keyboard arrow keys and press Enter/Space to focus the corresponding grid cell
-**Plans:** 1 plan
+**Plans:** 2 plans
 Plans:
-- [ ] 07-01-PLAN.md — Autocomplete dropdown component + wiring to add/edit forms
+- [ ] 09-01-PLAN.md — Template ARIA combobox markup + search result CSS styles
+- [ ] 09-02-PLAN.md — Search JS logic (debounce, fetch, results, highlights, keyboard nav) + browser verify
 **UI hint**: yes
 
 ### Phase 10: Resilience
@@ -172,10 +173,10 @@ Plans:
 | 5. Item CRUD Backend | 2/2 | Complete   | 2026-04-03 |
 | 6. Item CRUD Frontend | 0/2 | In Progress|  |
 | 7. Tag Autocomplete | 1/1 | Complete   | 2026-04-03 |
-| 8. Search Backend | 0/? | Not started | - |
-| 9. Search Frontend | 0/? | Not started | - |
+| 8. Search Backend | 0/1 | Planning complete | - |
+| 9. Search Frontend | 0/2 | Planning complete | - |
 | 10. Resilience | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-03 after Phase 6 replanning*
+*Last updated: 2026-04-03 after Phase 9 planning*
