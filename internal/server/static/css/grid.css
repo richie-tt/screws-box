@@ -15,8 +15,15 @@
   --col-header-height: 2rem;
 }
 
+/* Manual toggle */
+[data-theme="dark"] {
+  --cell-light: hsl(220, 8%, 22%);
+  --cell-dark: hsl(220, 8%, 16%);
+  --cell-empty-opacity: 0.45;
+}
+/* System preference fallback */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --cell-light: hsl(220, 8%, 22%);
     --cell-dark: hsl(220, 8%, 16%);
     --cell-empty-opacity: 0.45;
@@ -450,10 +457,16 @@
   100% { background-color: inherit; }
 }
 @media (prefers-color-scheme: dark) {
-  @keyframes success-pulse {
-    0% { background-color: hsl(145, 30%, 22%); }
-    100% { background-color: inherit; }
+  :root:not([data-theme="light"]) .grid-cell.pulse {
+    animation-name: success-pulse-dark;
   }
+}
+[data-theme="dark"] .grid-cell.pulse {
+  animation-name: success-pulse-dark;
+}
+@keyframes success-pulse-dark {
+  0% { background-color: hsl(145, 30%, 22%); }
+  100% { background-color: inherit; }
 }
 .grid-cell.pulse {
   animation: success-pulse 500ms ease-out forwards;
@@ -780,42 +793,18 @@
 
 /* ==========================================================================
    11. Settings Panel
+   Extends .expanded-panel pattern from Section 5.
    ========================================================================== */
 
-.settings-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: color 0.15s, background 0.15s;
-}
-
-.settings-trigger:hover {
-  color: var(--text);
-  background: var(--bg-inset);
-}
-
+/* Settings trigger — now in header, inherits .ghost button styles */
 .settings-trigger.active {
   color: var(--accent);
   background: var(--accent-subtle);
 }
 
+/* Settings uses .expanded-panel base — only override width */
 .settings-panel {
-  position: fixed;
   width: 280px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  z-index: 100;
-  overflow: hidden;
 }
 
 .settings-grid-inputs {
@@ -825,26 +814,8 @@
   margin-top: var(--space-sm);
 }
 
-.settings-grid-inputs label {
-  display: block;
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: var(--space-xs);
-}
-
-.settings-grid-inputs input[type="number"] {
-  width: 100%;
-}
-
-.settings-panel .panel-body label {
-  display: block;
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: var(--space-xs);
-}
-
-.settings-panel .panel-body > input[type="text"] {
-  width: 100%;
+/* Name input spacing */
+.settings-panel .expanded-form > input[type="text"] {
   margin-bottom: var(--space-sm);
 }
 
@@ -872,14 +843,18 @@
   z-index: 200;
 }
 
+[data-theme="dark"] .resize-modal-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
 @media (prefers-color-scheme: dark) {
-  .resize-modal-backdrop {
+  :root:not([data-theme]) .resize-modal-backdrop {
     background: rgba(0, 0, 0, 0.6);
   }
 }
 
 .resize-modal {
   background: var(--bg-raised);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   max-width: 400px;
@@ -887,7 +862,6 @@
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  z-index: 201;
 }
 
 .resize-modal-header {
@@ -900,7 +874,6 @@
   color: var(--danger);
   font-size: 15px;
   font-weight: 700;
-  font-family: var(--font-body);
 }
 
 .resize-modal-body {

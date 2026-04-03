@@ -1,6 +1,7 @@
-package main
+package server
 
 import (
+	"context"
 	"encoding/json"
 	"html/template"
 	"log/slog"
@@ -8,8 +9,27 @@ import (
 	"strconv"
 	"strings"
 
+	"screws-box/internal/model"
+
 	"github.com/go-chi/chi/v5"
 )
+
+// StoreService defines the storage operations required by HTTP handlers.
+type StoreService interface {
+	GetGridData() (*model.GridData, error)
+	CreateItem(ctx context.Context, containerID int64, name string, description *string, tags []string) (*model.ItemResponse, error)
+	GetItem(ctx context.Context, id int64) (*model.ItemResponse, error)
+	UpdateItem(ctx context.Context, id int64, name string, description *string, containerID int64) (*model.ItemResponse, error)
+	DeleteItem(ctx context.Context, id int64) error
+	AddTagToItem(ctx context.Context, itemID int64, tagName string) (*model.ItemResponse, error)
+	RemoveTagFromItem(ctx context.Context, itemID int64, tagName string) error
+	ListItemsByContainer(ctx context.Context, containerID int64) (*model.ContainerWithItems, error)
+	ListAllItems(ctx context.Context) ([]model.ItemResponse, error)
+	SearchItems(ctx context.Context, query string) ([]model.ItemResponse, error)
+	ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error)
+	ResizeShelf(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
+	UpdateShelfName(ctx context.Context, name string) error
+}
 
 // --- JSON helpers ---
 
@@ -71,7 +91,7 @@ func validateCreateItem(req *CreateItemRequest) string {
 		}
 		req.Tags[i] = t
 	}
-	req.Tags = dedup(req.Tags)
+	req.Tags = model.Dedup(req.Tags)
 	if req.Description != nil && len(*req.Description) > 1000 {
 		return "description must be at most 1000 characters"
 	}
@@ -106,7 +126,8 @@ func validateAddTag(req *AddTagRequest) string {
 	return ""
 }
 
-func validateResizeRequest(req *ResizeRequest) string {
+// ValidateResizeRequest validates a resize request. Exported for handler tests.
+func ValidateResizeRequest(req *model.ResizeRequest) string {
 	if req.Rows < 1 || req.Rows > 26 {
 		return "rows must be between 1 and 26"
 	}
@@ -123,18 +144,18 @@ func validateResizeRequest(req *ResizeRequest) string {
 	return ""
 }
 
-func handleResizeShelf(store *Store) http.HandlerFunc {
+func handleResizeShelf(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req ResizeRequest
+		var req model.ResizeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
-		if msg := validateResizeRequest(&req); msg != "" {
+		if msg := ValidateResizeRequest(&req); msg != "" {
 			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-		result, err := store.ResizeShelf(r.Context(), req.Rows, req.Cols)
+		result, err := s.ResizeShelf(r.Context(), req.Rows, req.Cols)
 		if err != nil {
 			slog.Error("resize shelf", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -144,9 +165,8 @@ func handleResizeShelf(store *Store) http.HandlerFunc {
 			writeJSON(w, http.StatusConflict, result)
 			return
 		}
-		// If name provided, update shelf name.
-		if req.Name != nil && *req.Name != "" {
-			if err := store.UpdateShelfName(r.Context(), *req.Name); err != nil {
+		if req.Name != nil {
+			if err := s.UpdateShelfName(r.Context(), *req.Name); err != nil {
 				slog.Error("update shelf name", "err", err)
 			}
 		}
@@ -156,15 +176,15 @@ func handleResizeShelf(store *Store) http.HandlerFunc {
 
 // --- Template handler ---
 
-func handleGrid(store *Store) http.HandlerFunc {
+func handleGrid(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := store.GetGridData()
+		data, err := s.GetGridData()
 		if err != nil {
 			slog.Error("failed to load grid data", "err", err)
-			data = &GridData{Error: "Cannot load shelf -- check server logs."}
+			data = &model.GridData{Error: "Cannot load shelf -- check server logs."}
 		}
 
-		tmpl, err := template.ParseFS(mustSubFS(contentFS, "templates"),
+		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
 			"layout.html", "grid.html")
 		if err != nil {
 			slog.Error("template parse error", "err", err)
@@ -180,7 +200,7 @@ func handleGrid(store *Store) http.HandlerFunc {
 
 // --- API handlers ---
 
-func handleCreateItem(store *Store) http.HandlerFunc {
+func handleCreateItem(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req CreateItemRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -191,7 +211,7 @@ func handleCreateItem(store *Store) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-		item, err := store.CreateItem(r.Context(), req.ContainerID, req.Name, req.Description, req.Tags)
+		item, err := s.CreateItem(r.Context(), req.ContainerID, req.Name, req.Description, req.Tags)
 		if err != nil {
 			if strings.Contains(err.Error(), "container not found") {
 				writeError(w, http.StatusNotFound, "container not found")
@@ -205,14 +225,14 @@ func handleCreateItem(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleGetItem(store *Store) http.HandlerFunc {
+func handleGetItem(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid item ID")
 			return
 		}
-		item, err := store.GetItem(r.Context(), id)
+		item, err := s.GetItem(r.Context(), id)
 		if err != nil {
 			slog.Error("get item", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -226,7 +246,7 @@ func handleGetItem(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleUpdateItem(store *Store) http.HandlerFunc {
+func handleUpdateItem(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
@@ -242,7 +262,7 @@ func handleUpdateItem(store *Store) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-		item, err := store.UpdateItem(r.Context(), id, req.Name, req.Description, req.ContainerID)
+		item, err := s.UpdateItem(r.Context(), id, req.Name, req.Description, req.ContainerID)
 		if err != nil {
 			if strings.Contains(err.Error(), "container not found") {
 				writeError(w, http.StatusNotFound, "container not found")
@@ -260,14 +280,14 @@ func handleUpdateItem(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleDeleteItem(store *Store) http.HandlerFunc {
+func handleDeleteItem(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid item ID")
 			return
 		}
-		if err := store.DeleteItem(r.Context(), id); err != nil {
+		if err := s.DeleteItem(r.Context(), id); err != nil {
 			if strings.Contains(err.Error(), "item not found") {
 				writeError(w, http.StatusNotFound, "item not found")
 				return
@@ -280,7 +300,7 @@ func handleDeleteItem(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleAddTag(store *Store) http.HandlerFunc {
+func handleAddTag(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
@@ -296,7 +316,7 @@ func handleAddTag(store *Store) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-		item, err := store.AddTagToItem(r.Context(), id, req.Name)
+		item, err := s.AddTagToItem(r.Context(), id, req.Name)
 		if err != nil {
 			if strings.Contains(err.Error(), "item not found") {
 				writeError(w, http.StatusNotFound, "item not found")
@@ -310,7 +330,7 @@ func handleAddTag(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleRemoveTag(store *Store) http.HandlerFunc {
+func handleRemoveTag(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
@@ -318,7 +338,7 @@ func handleRemoveTag(store *Store) http.HandlerFunc {
 			return
 		}
 		tagName := strings.ToLower(chi.URLParam(r, "tagName"))
-		if err := store.RemoveTagFromItem(r.Context(), id, tagName); err != nil {
+		if err := s.RemoveTagFromItem(r.Context(), id, tagName); err != nil {
 			if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "not associated") {
 				writeError(w, http.StatusNotFound, err.Error())
 				return
@@ -331,14 +351,14 @@ func handleRemoveTag(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleListContainerItems(store *Store) http.HandlerFunc {
+func handleListContainerItems(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "containerID"), 10, 64)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid container ID")
 			return
 		}
-		result, err := store.ListItemsByContainer(r.Context(), id)
+		result, err := s.ListItemsByContainer(r.Context(), id)
 		if err != nil {
 			slog.Error("list container items", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -352,9 +372,9 @@ func handleListContainerItems(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleListItems(store *Store) http.HandlerFunc {
+func handleListItems(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := store.ListAllItems(r.Context())
+		items, err := s.ListAllItems(r.Context())
 		if err != nil {
 			slog.Error("list items", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -364,15 +384,15 @@ func handleListItems(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleSearch(store *Store) http.HandlerFunc {
+func handleSearch(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 		if q == "" {
-			writeJSON(w, http.StatusOK, map[string][]ItemResponse{"results": {}})
+			writeJSON(w, http.StatusOK, map[string][]model.ItemResponse{"results": {}})
 			return
 		}
 
-		items, err := store.SearchItems(r.Context(), q)
+		items, err := s.SearchItems(r.Context(), q)
 		if err != nil {
 			slog.Error("search items", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -383,10 +403,10 @@ func handleSearch(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleListTags(store *Store) http.HandlerFunc {
+func handleListTags(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-		tags, err := store.ListTags(r.Context(), q)
+		tags, err := s.ListTags(r.Context(), q)
 		if err != nil {
 			slog.Error("list tags", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")

@@ -9,6 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"screws-box/internal/server"
+	"screws-box/internal/store"
 )
 
 func main() {
@@ -28,17 +31,16 @@ func run() error {
 		syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Database — per D-01: DB_PATH env var, default ./screws_box.db
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
 		dbPath = "./screws_box.db"
 	}
 
-	var store Store
-	if err := store.Open(dbPath); err != nil {
+	var s store.Store
+	if err := s.Open(dbPath); err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer s.Close()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -48,7 +50,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: newRouter(&store),
+		Handler: server.NewRouter(&s),
 	}
 
 	go func() {
