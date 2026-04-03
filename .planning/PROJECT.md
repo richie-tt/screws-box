@@ -14,13 +14,14 @@ Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elem
 
 - [x] Dostęp sieciowy (nie tylko localhost) — Validated in Phase 1: Project Skeleton
 - [x] Dane przechowywane w SQLite — Validated in Phase 2: Database Foundation
+- [x] Element ma nazwę i wiele tagów/kategorii — Validated in Phase 7: Tag Autocomplete (autocomplete prevents fragmentation)
 
 ### Active
 
 - [ ] Konfigurowalna siatka półki (np. 5x10 = 10 kolumn, 5 rzędów)
 - [ ] Wizualna reprezentacja siatki jako szachownica z oznaczeniami (1A, 1B... 5J)
 - [ ] Dodawanie elementów do pojemnika przez kliknięcie w siatkę
-- [ ] Element ma nazwę i wiele tagów/kategorii (np. "m6", "sprężynowa", "falista", "powiększona")
+- [x] Element ma nazwę i wiele tagów/kategorii (np. "m6", "sprężynowa", "falista", "powiększona") — Validated in Phase 5-7
 - [ ] Jeden pojemnik może zawierać wiele różnych elementów
 - [ ] Wyszukiwanie tekstowe po nazwie lub tagu
 - [ ] Wyniki wyszukiwania jako lista z pozycjami (np. "3B")
@@ -75,4 +76,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after initialization*
+*Last updated: 2026-04-03 after Phase 7 completion*
