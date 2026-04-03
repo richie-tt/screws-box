@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-04-02T21:10:26.610Z"
+status: completed
+last_updated: "2026-04-03T05:52:10.033Z"
 progress:
   total_phases: 10
-  completed_phases: 3
-  total_plans: 5
+  completed_phases: 1
+  total_plans: 3
   completed_plans: 3
-  percent: 60
+  percent: 100
 ---
 
 # Project State: Screws Box
@@ -18,16 +18,16 @@ progress:
 
 **Core Value:** Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elementu.
 **Current Milestone:** v1
-**Current Focus:** Phase 04 — grid-rendering
+**Current Focus:** Phase 05 — item-crud-backend
 
 ## Current Position
 
-Phase: 03 (grid-ui-design) — COMPLETE
+Phase: 04 (grid-rendering) — COMPLETE
 Plan: 1 of 1 (complete)
-**Phase:** 03
+**Phase:** 04
 **Plan:** Complete
-**Status:** Phase 03 complete, ready for Phase 04
-**Progress:** [██████░░░░] 60%
+**Status:** Phase 04 complete, ready for Phase 05
+**Progress:** [██████████] 100%
 
 ## Phases at a Glance
 
@@ -36,7 +36,7 @@ Plan: 1 of 1 (complete)
 | 1 | Project Skeleton | Complete |
 | 2 | Database Foundation | Complete |
 | 3 | Grid UI Design | Complete |
-| 4 | Grid Rendering | Not started |
+| 4 | Grid Rendering | Complete |
 | 5 | Item CRUD Backend | Not started |
 | 6 | Item CRUD Frontend | Not started |
 | 7 | Tag Autocomplete | Not started |
@@ -46,8 +46,8 @@ Plan: 1 of 1 (complete)
 
 ## Performance Metrics
 
-**Plans executed:** 3
-**Plans passed first try:** 3
+**Plans executed:** 4
+**Plans passed first try:** 4
 **Repair cycles used:** 0
 **Phase transitions:** 0
 
@@ -56,6 +56,7 @@ Plan: 1 of 1 (complete)
 | 01 | 01 | 2min | 2 | 12 |
 | 02 | 01 | 3min | 3 | 7 |
 | 03 | 01 | 5min | 3 | 5 |
+| 04 | 01 | 3min | 2 | 9 |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ Plan: 1 of 1 (complete)
 | No timestamps on item_tag | Join table with composite PK, not an entity — timestamps add no value |
 | Page-specific CSS via extra_head template block | grid.css loads only on /grid, not globally — keeps non-grid pages clean |
 | Auto dark/light theme (no data-theme attr) | Removed hardcoded data-theme="light" from layout.html — Pico handles via prefers-color-scheme |
+| handleGrid closure pattern for store-aware handlers | Dependency injection via closure, not global state |
+| GET / serves grid directly, /grid route removed | Grid IS the main page — no separate index needed |
+| CSS var(--grid-cols) via inline style | Dynamic column count from server, CSS fallback of 5 |
 
 ### Open Questions
 
@@ -96,9 +100,9 @@ None.
 
 ## Session Continuity
 
-**Last action:** Completed 03-01-PLAN.md (2026-04-02)
-**Next action:** Run `/gsd:execute-phase` for Phase 04 (Grid Rendering)
-**Context to restore:** Phase 03 complete. Chessboard grid CSS + HTML mockup at /grid with sticky headers, search bar, highlight states. Page-specific CSS via extra_head block. Auto dark/light theme.
+**Last action:** Completed 04-01-PLAN.md (2026-04-03)
+**Next action:** Run `/gsd:execute-phase` for Phase 05 (Item CRUD Backend)
+**Context to restore:** Phase 04 complete. GET / serves live grid from SQLite data. GridData view model with item counts. Dynamic CSS columns via --grid-cols. handleGrid closure with *Store. Search bar present but disabled.
 
 ---
 *State initialized: 2026-04-02*

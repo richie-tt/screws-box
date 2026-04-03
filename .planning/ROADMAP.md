@@ -74,7 +74,7 @@ Plans:
   4. Changing the shelf dimensions in the database and restarting re-renders the grid with the new size
 **Plans:** 1 plan
 Plans:
-- [ ] 04-01-PLAN.md — Store GetGridData + dynamic grid template wired to live DB data on GET /
+- [x] 04-01-PLAN.md — Store GetGridData + dynamic grid template wired to live DB data on GET /
 **UI hint**: yes
 
 ### Phase 5: Item CRUD Backend
