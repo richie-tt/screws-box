@@ -16,10 +16,10 @@
 ### Item Management
 
 - [ ] **ITEM-01**: User can add item to container by clicking container on grid
-- [ ] **ITEM-02**: Item has name and multiple tags (e.g., "m6", "sprężynowa", "powiększona")
+- [x] **ITEM-02**: Item has name and multiple tags (e.g., "m6", "sprężynowa", "powiększona")
 - [ ] **ITEM-03**: User can edit item name and tags
-- [ ] **ITEM-04**: User can delete item
-- [ ] **ITEM-05**: One container can hold multiple different items
+- [x] **ITEM-04**: User can delete item
+- [x] **ITEM-05**: One container can hold multiple different items
 - [ ] **ITEM-06**: Tag autocomplete suggests existing tags when adding/editing items
 
 ### Search
@@ -72,10 +72,10 @@
 | GRID-04 | Phase 3 | Complete |
 | GRID-05 | Phase 10 | Pending |
 | ITEM-01 | Phase 6 | Pending |
-| ITEM-02 | Phase 5 | Pending |
+| ITEM-02 | Phase 5 | Complete |
 | ITEM-03 | Phase 6 | Pending |
-| ITEM-04 | Phase 5 | Pending |
-| ITEM-05 | Phase 5 | Pending |
+| ITEM-04 | Phase 5 | Complete |
+| ITEM-05 | Phase 5 | Complete |
 | ITEM-06 | Phase 7 | Pending |
 | SRCH-01 | Phase 9 | Pending |
 | SRCH-02 | Phase 8 | Pending |

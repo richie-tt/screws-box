@@ -87,9 +87,9 @@ Plans:
   3. `DELETE /api/items/:id` removes the item and its tag associations; the container still exists afterward
   4. A container can hold multiple different items — adding a second item to the same container succeeds
   5. Tags are stored in the normalized `item_tag` junction table, not as a comma-separated string
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 05-01-PLAN.md — Store CRUD methods for items/tags with integration tests
+- [x] 05-01-PLAN.md — Store CRUD methods for items/tags with integration tests
 - [ ] 05-02-PLAN.md — HTTP handlers, validation, route registration, and handler tests
 
 ### Phase 6: Item CRUD Frontend
@@ -160,7 +160,7 @@ Plans:
 | 2. Database Foundation | 1/1 | Complete   | 2026-04-02 |
 | 3. Grid UI Design | 1/1 | Complete   | 2026-04-02 |
 | 4. Grid Rendering | 0/1 | Planning complete | - |
-| 5. Item CRUD Backend | 0/2 | Planning complete | - |
+| 5. Item CRUD Backend | 1/2 | In Progress|  |
 | 6. Item CRUD Frontend | 0/? | Not started | - |
 | 7. Tag Autocomplete | 0/? | Not started | - |
 | 8. Search Backend | 0/? | Not started | - |
