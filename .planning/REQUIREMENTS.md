@@ -11,7 +11,7 @@
 - [x] **GRID-02**: Grid displays as visual chessboard with column numbers (1,2,3...) and row letters (A,B,C...)
 - [x] **GRID-03**: Each container shows its label (e.g., "3B") and item count
 - [x] **GRID-04**: Grid is responsive — usable on phone/tablet in workshop
-- [ ] **GRID-05**: Grid resize warns about items in removed containers and blocks if items would be orphaned
+- [x] **GRID-05**: Grid resize warns about items in removed containers and blocks if items would be orphaned
 
 ### Item Management
 
@@ -70,7 +70,7 @@
 | GRID-02 | Phase 3 | Complete |
 | GRID-03 | Phase 4 | Complete |
 | GRID-04 | Phase 3 | Complete |
-| GRID-05 | Phase 10 | Pending |
+| GRID-05 | Phase 10 | Complete |
 | ITEM-01 | Phase 6 | Complete |
 | ITEM-02 | Phase 5 | Complete |
 | ITEM-03 | Phase 6 | Complete |
