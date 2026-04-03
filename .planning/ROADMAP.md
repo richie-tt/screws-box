@@ -11,7 +11,7 @@
 - [x] **Phase 2: Database Foundation** — SQLite store with correct pragmas, normalized schema, coordinate system (completed 2026-04-02)
 - [x] **Phase 3: Grid UI Design** — Visual chessboard design via frontend-design plugin, responsive layout (completed 2026-04-02)
 - [ ] **Phase 4: Grid Rendering** — Server-rendered grid with cell labels, item counts, configurable dimensions
-- [ ] **Phase 5: Item CRUD Backend** — Store + API endpoints for create/read/update/delete items with tags
+- [x] **Phase 5: Item CRUD Backend** — Store + API endpoints for create/read/update/delete items with tags (completed 2026-04-03)
 - [ ] **Phase 6: Item CRUD Frontend** — Click container to add/edit/delete items; form wired to API
 - [ ] **Phase 7: Tag Autocomplete** — Existing tags suggested when adding or editing items
 - [ ] **Phase 8: Search Backend** — SearchItems query with exact tag match and LIKE on names, /api/search endpoint
@@ -87,10 +87,10 @@ Plans:
   3. `DELETE /api/items/:id` removes the item and its tag associations; the container still exists afterward
   4. A container can hold multiple different items — adding a second item to the same container succeeds
   5. Tags are stored in the normalized `item_tag` junction table, not as a comma-separated string
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 05-01-PLAN.md — Store CRUD methods for items/tags with integration tests
-- [ ] 05-02-PLAN.md — HTTP handlers, validation, route registration, and handler tests
+- [x] 05-02-PLAN.md — HTTP handlers, validation, route registration, and handler tests
 
 ### Phase 6: Item CRUD Frontend
 **Goal**: A user can add, edit, and delete items in any container using only the browser, with no manual API calls
@@ -160,7 +160,7 @@ Plans:
 | 2. Database Foundation | 1/1 | Complete   | 2026-04-02 |
 | 3. Grid UI Design | 1/1 | Complete   | 2026-04-02 |
 | 4. Grid Rendering | 0/1 | Planning complete | - |
-| 5. Item CRUD Backend | 1/2 | In Progress|  |
+| 5. Item CRUD Backend | 2/2 | Complete   | 2026-04-03 |
 | 6. Item CRUD Frontend | 0/? | Not started | - |
 | 7. Tag Autocomplete | 0/? | Not started | - |
 | 8. Search Backend | 0/? | Not started | - |
