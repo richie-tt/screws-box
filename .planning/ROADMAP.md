@@ -16,7 +16,7 @@
 - [x] **Phase 7: Tag Autocomplete** — Existing tags suggested when adding or editing items (completed 2026-04-03)
 - [ ] **Phase 8: Search Backend** — SearchItems query with exact tag match and LIKE on names, /api/search endpoint
 - [ ] **Phase 9: Search Frontend** — As-you-type results, grid cell highlighting, keyboard navigation
-- [ ] **Phase 10: Resilience** — Grid resize guard: warn on occupied cells, block if items would be orphaned
+- [x] **Phase 10: Resilience** — Grid resize guard: warn on occupied cells, block if items would be orphaned (completed 2026-04-03)
 
 ## Phase Details
 
@@ -161,10 +161,10 @@ Plans:
   2. The resize is blocked (not executed) if any items would be orphaned; the grid remains unchanged
   3. Resizing to a larger grid succeeds immediately and new empty cells appear in the correct positions
   4. Resizing a grid where all removed cells are empty succeeds without any warning
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 10-01-PLAN.md — Backend: ResizeShelf store method + PUT /api/shelf/resize endpoint with TDD tests
-- [ ] 10-02-PLAN.md — Frontend: settings gear icon, settings panel, blocking modal, wired to resize API
+- [x] 10-02-PLAN.md — Frontend: settings gear icon, settings panel, blocking modal, wired to resize API
 **UI hint**: yes
 
 ## Progress
@@ -180,7 +180,7 @@ Plans:
 | 7. Tag Autocomplete | 1/1 | Complete   | 2026-04-03 |
 | 8. Search Backend | 0/1 | Planning complete | - |
 | 9. Search Frontend | 1/2 | In Progress|  |
-| 10. Resilience | 1/2 | In Progress|  |
+| 10. Resilience | 2/2 | Complete   | 2026-04-03 |
 
 ---
 *Roadmap created: 2026-04-02*
