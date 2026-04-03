@@ -188,7 +188,45 @@
 }
 
 /* --------------------------------------------------------------------------
-   7. Search highlight states
+   7. Button reset for grid cells (Pico CSS overrides)
+   -------------------------------------------------------------------------- */
+
+button.grid-cell {
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  background-color: inherit;
+  border-radius: 0;
+  outline-offset: -2px;
+  box-shadow: none;
+  width: 100%;
+  text-align: center;
+  --pico-background-color: inherit;
+  --pico-border-color: transparent;
+  --pico-box-shadow: none;
+}
+
+button.grid-cell:hover,
+button.grid-cell:active,
+button.grid-cell:focus {
+  --pico-background-color: inherit;
+  --pico-border-color: transparent;
+  --pico-box-shadow: none;
+  background-color: inherit;
+}
+
+button.grid-cell.cell-light {
+  background-color: var(--cell-light);
+}
+
+button.grid-cell.cell-dark {
+  background-color: var(--cell-dark);
+}
+
+/* --------------------------------------------------------------------------
+   8. Search highlight states
    -------------------------------------------------------------------------- */
 
 .grid-container.search-active .grid-cell {
@@ -215,4 +253,24 @@
 
 .search-dropdown.visible {
   opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   10. Dialog item list and tag badges
+   -------------------------------------------------------------------------- */
+
+.item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.tag-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.75rem;
+  background-color: var(--pico-secondary-background);
+  color: var(--pico-secondary-inverse);
 }
