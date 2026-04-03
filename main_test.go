@@ -12,8 +12,9 @@ import (
 	"time"
 )
 
-func TestIndexHandler(t *testing.T) {
-	router := newRouter()
+func TestGridHandler(t *testing.T) {
+	store := openTestStore(t)
+	router := newRouter(store)
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
@@ -41,13 +42,29 @@ func TestIndexHandler(t *testing.T) {
 	if !strings.Contains(html, "Screws Box") {
 		t.Error("response body missing 'Screws Box'")
 	}
-	if !strings.Contains(html, "Setup in progress") {
-		t.Error("response body missing 'Setup in progress'")
+	if !strings.Contains(html, "grid-container") {
+		t.Error("response body missing 'grid-container'")
+	}
+	if !strings.Contains(html, "1A") {
+		t.Error("response body missing '1A' (first cell coord)")
+	}
+	if !strings.Contains(html, "10E") {
+		t.Error("response body missing '10E' (last cell coord for 10x5 grid)")
+	}
+	if !strings.Contains(html, "cell-coord") {
+		t.Error("response body missing 'cell-coord'")
+	}
+	if !strings.Contains(html, "cell-count") {
+		t.Error("response body missing 'cell-count'")
+	}
+	if strings.Contains(html, "Setup in progress") {
+		t.Error("response body should NOT contain 'Setup in progress' (old placeholder)")
 	}
 }
 
 func TestStaticCSS(t *testing.T) {
-	router := newRouter()
+	store := openTestStore(t)
+	router := newRouter(store)
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
@@ -63,6 +80,8 @@ func TestStaticCSS(t *testing.T) {
 }
 
 func TestServerBindAddress(t *testing.T) {
+	store := openTestStore(t)
+
 	// Find a free port
 	listener, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
@@ -73,7 +92,7 @@ func TestServerBindAddress(t *testing.T) {
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
-		Handler: newRouter(),
+		Handler: newRouter(store),
 	}
 
 	go func() {
@@ -98,9 +117,11 @@ func TestServerBindAddress(t *testing.T) {
 }
 
 func TestGracefulShutdown(t *testing.T) {
+	store := openTestStore(t)
+
 	srv := &http.Server{
 		Addr:    "0.0.0.0:0",
-		Handler: newRouter(),
+		Handler: newRouter(store),
 	}
 
 	listener, err := net.Listen("tcp", "0.0.0.0:0")
