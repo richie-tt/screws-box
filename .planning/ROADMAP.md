@@ -161,7 +161,7 @@ Plans:
 | 3. Grid UI Design | 1/1 | Complete   | 2026-04-02 |
 | 4. Grid Rendering | 0/1 | Planning complete | - |
 | 5. Item CRUD Backend | 2/2 | Complete   | 2026-04-03 |
-| 6. Item CRUD Frontend | 0/? | Not started | - |
+| 6. Item CRUD Frontend | 1/2 | In Progress|  |
 | 7. Tag Autocomplete | 0/? | Not started | - |
 | 8. Search Backend | 0/? | Not started | - |
 | 9. Search Frontend | 0/? | Not started | - |
