@@ -8,7 +8,8 @@
   const gridContainer = document.querySelector('.grid-container');
   if (!gridContainer) return;
 
-  let expandedCell = null;
+  let expandedCell = null;   // the grid cell that was clicked
+  let expandedPanel = null;  // the floating overlay panel element
 
   // --- Section 2: Utility functions ---
 
@@ -71,27 +72,70 @@
   gridContainer.addEventListener('click', function (e) {
     const cell = e.target.closest('.grid-cell');
     if (!cell) return;
-    // Do not re-expand an already expanded cell
-    if (cell.classList.contains('expanded')) return;
+    // Do not re-expand an already active cell
+    if (cell.classList.contains('cell-active')) return;
+    // Stop propagation so the click-outside handler doesn't immediately close the panel
+    e.stopPropagation();
     expandCell(cell);
   });
 
   async function expandCell(cell) {
-    // Collapse any previously expanded cell first
+    // Collapse any previously expanded panel first
     if (expandedCell) {
       collapseCell();
     }
 
-    // Save original HTML for restore on collapse
-    cell._originalHTML = cell.innerHTML;
+    // Highlight the source cell
+    cell.classList.add('cell-active');
+    expandedCell = cell;
 
-    // Add expanded class
-    cell.classList.add('expanded');
+    // Create a floating panel outside the grid
+    const panel = document.createElement('div');
+    panel.className = 'expanded-panel';
+    document.body.appendChild(panel);
+    expandedPanel = panel;
 
-    // Clear cell contents
-    cell.innerHTML = '';
+    // Position panel near the clicked cell
+    const rect = cell.getBoundingClientRect();
+    const panelWidth = 300;
+    let left = rect.right + 12;
+    // If it overflows the right edge, place it to the left of the cell
+    if (left + panelWidth > window.innerWidth) {
+      left = rect.left - panelWidth - 12;
+    }
+    // If still off-screen, center horizontally
+    if (left < 8) {
+      left = Math.max(8, (window.innerWidth - panelWidth) / 2);
+    }
+    // Clamp right edge
+    if (left + panelWidth > window.innerWidth - 8) {
+      left = window.innerWidth - panelWidth - 8;
+    }
+    let top = rect.top;
+    // Keep within viewport vertically
+    if (top + 300 > window.innerHeight) {
+      top = Math.max(8, window.innerHeight - 400);
+    }
+    panel.style.top = top + 'px';
+    panel.style.left = left + 'px';
 
-    // Close button
+    // Panel header bar
+    const headerBar = document.createElement('div');
+    headerBar.className = 'panel-header';
+
+    const coordWrap = document.createElement('div');
+    const coordLabel = document.createElement('span');
+    coordLabel.className = 'panel-coord';
+    coordLabel.textContent = cell.dataset.coord;
+    coordWrap.appendChild(coordLabel);
+
+    const countLabel = document.createElement('span');
+    countLabel.className = 'panel-count';
+    const cnt = parseInt(cell.dataset.count, 10) || 0;
+    countLabel.textContent = cnt === 0 ? 'Empty' : formatCount(cnt);
+    coordWrap.appendChild(countLabel);
+    headerBar.appendChild(coordWrap);
+
     const closeBtn = document.createElement('button');
     closeBtn.className = 'expanded-close';
     closeBtn.type = 'button';
@@ -100,20 +144,13 @@
       e.stopPropagation();
       collapseCell();
     });
-
-    // Header with coord label
-    const header = document.createElement('div');
-    header.className = 'expanded-header';
-    header.textContent = cell.dataset.coord;
+    headerBar.appendChild(closeBtn);
+    panel.appendChild(headerBar);
 
     // Content container
     const content = document.createElement('div');
-
-    cell.appendChild(closeBtn);
-    cell.appendChild(header);
-    cell.appendChild(content);
-
-    expandedCell = cell;
+    content.className = 'panel-body';
+    panel.appendChild(content);
 
     // Fetch items for this container
     const containerId = parseInt(cell.dataset.containerId, 10);
@@ -127,15 +164,19 @@
   }
 
   function collapseCell() {
-    if (!expandedCell) return;
-    expandedCell.classList.remove('expanded');
-    expandedCell.innerHTML = expandedCell._originalHTML || '';
-    expandedCell = null;
+    if (expandedPanel) {
+      expandedPanel.remove();
+      expandedPanel = null;
+    }
+    if (expandedCell) {
+      expandedCell.classList.remove('cell-active');
+      expandedCell = null;
+    }
   }
 
   // Click-outside handler
   document.addEventListener('click', function (e) {
-    if (expandedCell && !expandedCell.contains(e.target)) {
+    if (expandedPanel && !expandedPanel.contains(e.target)) {
       collapseCell();
     }
   });
@@ -157,34 +198,25 @@
 
     items.forEach(function (item) {
       const li = document.createElement('li');
+      li.className = 'item-card';
 
-      const row = document.createElement('div');
-      row.className = 'item-row';
+      // Top row: name + action icons
+      const topRow = document.createElement('div');
+      topRow.className = 'item-card-top';
 
-      // Item name
       const nameSpan = document.createElement('span');
       nameSpan.className = 'item-name';
       nameSpan.textContent = item.name;
-      row.appendChild(nameSpan);
+      topRow.appendChild(nameSpan);
 
-      // Tags as chips (no X button in list view)
-      if (item.tags && item.tags.length > 0) {
-        item.tags.forEach(function (tag) {
-          const chip = document.createElement('kbd');
-          chip.className = 'tag-chip';
-          chip.textContent = tag;
-          row.appendChild(chip);
-        });
-      }
-
-      // Action buttons
+      // Compact action buttons (reveal on hover)
       const actions = document.createElement('div');
       actions.className = 'item-actions';
 
       const editBtn = document.createElement('button');
-      editBtn.className = 'outline secondary';
       editBtn.type = 'button';
-      editBtn.textContent = 'Edit';
+      editBtn.textContent = '\u270E'; // pencil
+      editBtn.title = 'Edit';
       editBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         renderInlineEdit(li, item, cell, container, containerId);
@@ -192,30 +224,45 @@
       actions.appendChild(editBtn);
 
       const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'outline';
       deleteBtn.type = 'button';
-      deleteBtn.textContent = 'Delete';
+      deleteBtn.textContent = '\u2715'; // small x
+      deleteBtn.title = 'Delete';
       deleteBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         handleDelete(deleteBtn, item, cell, container, containerId);
       });
       actions.appendChild(deleteBtn);
 
-      row.appendChild(actions);
-      li.appendChild(row);
+      topRow.appendChild(actions);
+      li.appendChild(topRow);
+
+      // Tags row below name
+      if (item.tags && item.tags.length > 0) {
+        const tagsRow = document.createElement('div');
+        tagsRow.className = 'item-tags-row';
+        item.tags.forEach(function (tag) {
+          const chip = document.createElement('span');
+          chip.className = 'tag-chip';
+          chip.textContent = tag;
+          tagsRow.appendChild(chip);
+        });
+        li.appendChild(tagsRow);
+      }
+
       ul.appendChild(li);
     });
 
-    // "Add item" button below the list
+    container.appendChild(ul);
+
+    // Dashed "+ Add item" button
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
-    addBtn.textContent = 'Add item';
+    addBtn.className = 'add-item-btn';
+    addBtn.innerHTML = '+ Add item';
     addBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       renderAddForm(cell, container, containerId);
     });
-
-    container.appendChild(ul);
     container.appendChild(addBtn);
   }
 
@@ -287,8 +334,7 @@
     const submitBtn = document.createElement('button');
     submitBtn.type = 'submit';
     submitBtn.textContent = 'Add item';
-    submitBtn.disabled = true;
-    submitBtn.setAttribute('aria-disabled', 'true');
+    submitBtn.classList.add('btn-disabled');
     formActions.appendChild(submitBtn);
 
     // Cancel button only if coming from item list (not empty cell)
@@ -319,9 +365,15 @@
       const hasName = nameInput.value.trim().length > 0;
       const hasTags = pendingTags.length > 0;
       const enabled = hasName && hasTags;
-      submitBtn.disabled = !enabled;
-      submitBtn.setAttribute('aria-disabled', String(!enabled));
-      if (hasTags) {
+      if (enabled) {
+        submitBtn.classList.remove('btn-disabled');
+      } else {
+        submitBtn.classList.add('btn-disabled');
+      }
+      // Show tag hint when name is filled but no tags added yet
+      if (hasName && !hasTags) {
+        tagHint.hidden = false;
+      } else {
         tagHint.hidden = true;
       }
     }
@@ -361,13 +413,13 @@
       }
     });
 
-    nameInput.addEventListener('input', function () {
-      updateSubmitState();
-    });
+    nameInput.addEventListener('input', updateSubmitState);
 
     // Form submit
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
+      if (submitBtn.classList.contains('btn-disabled')) return;
+
       errorEl.textContent = '';
       nameInput.removeAttribute('aria-invalid');
 
@@ -375,11 +427,13 @@
       if (!name) {
         nameInput.setAttribute('aria-invalid', 'true');
         errorEl.textContent = 'Name is required';
+        nameInput.focus();
         return;
       }
 
       if (pendingTags.length === 0) {
         tagHint.hidden = false;
+        tagInput.focus();
         return;
       }
 

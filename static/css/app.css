@@ -1,6 +1,283 @@
-/* Screws Box - custom styles */
-/* Phase 1: minimal, Pico CSS handles most styling */
+/* ==========================================================================
+   Screws Box — Design System
+   Industrial-utilitarian aesthetic. No framework dependency.
+   ========================================================================== */
+
+/* --- Reset --- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; -moz-tab-size: 4; tab-size: 4; }
+
+/* --- Design Tokens --- */
+:root {
+  /* Typography */
+  --font-body: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, monospace;
+
+  /* Palette — warm workshop light */
+  --bg: hsl(40, 15%, 97%);
+  --bg-raised: hsl(0, 0%, 100%);
+  --bg-inset: hsl(38, 14%, 93%);
+  --text: hsl(30, 8%, 15%);
+  --text-muted: hsl(30, 6%, 50%);
+  --border: hsl(36, 10%, 86%);
+  --border-strong: hsl(36, 10%, 76%);
+
+  /* Accent — steel blue */
+  --accent: hsl(210, 55%, 48%);
+  --accent-hover: hsl(210, 55%, 42%);
+  --accent-subtle: hsl(210, 55%, 48%, 0.1);
+  --accent-glow: hsl(210, 55%, 48%, 0.2);
+
+  /* Semantic */
+  --danger: hsl(0, 65%, 50%);
+  --danger-hover: hsl(0, 65%, 42%);
+  --success: hsl(145, 45%, 45%);
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.12);
+}
+
+/* --- Dark Mode --- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: hsl(220, 10%, 10%);
+    --bg-raised: hsl(220, 10%, 14%);
+    --bg-inset: hsl(220, 10%, 8%);
+    --text: hsl(220, 8%, 88%);
+    --text-muted: hsl(220, 6%, 52%);
+    --border: hsl(220, 8%, 22%);
+    --border-strong: hsl(220, 8%, 32%);
+    --accent-subtle: hsl(210, 55%, 48%, 0.12);
+    --accent-glow: hsl(210, 55%, 48%, 0.18);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.4);
+  }
+}
+
+/* --- Base Typography --- */
+html {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+h1 { font-size: 1.4rem; }
+h2 { font-size: 1.15rem; }
+h3 { font-size: 1rem; }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+small { font-size: 0.8em; }
+strong { font-weight: 600; }
+code, kbd { font-family: var(--font-mono); font-size: 0.9em; }
+
+/* --- Layout --- */
+body > header {
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+body > header nav {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+body > header hgroup {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+body > header h1 {
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+}
+
+body > header p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+main {
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-md) var(--space-lg);
+}
+
 body > footer {
-    text-align: center;
-    opacity: 0.6;
+  text-align: center;
+  padding: var(--space-md);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* --- Form Elements --- */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+input[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px hsl(0, 65%, 50%, 0.15);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 40px;
+}
+
+label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+/* Label wrapping input — remove double margin */
+label > input,
+label > textarea {
+  margin-top: 3px;
+}
+
+/* --- Buttons --- */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #fff;
+  background-color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, border-color 0.15s, opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+
+button:hover {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+/* Secondary button */
+button.secondary {
+  color: var(--text);
+  background: var(--bg);
+  border-color: var(--border);
+}
+button.secondary:hover {
+  background: var(--bg-inset);
+  border-color: var(--border-strong);
+}
+
+/* Ghost / icon button */
+button.ghost {
+  color: var(--text-muted);
+  background: transparent;
+  border-color: transparent;
+  padding: 4px 6px;
+}
+button.ghost:hover {
+  color: var(--text);
+  background: var(--bg-inset);
+}
+
+/* Disabled visual state (still clickable for validation) */
+button.btn-disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+button:not(.btn-disabled):not(.secondary):not(.ghost) {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* Busy state */
+button[aria-busy="true"] {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* --- Utility --- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
 }
