@@ -116,6 +116,32 @@ func dedup(ss []string) []string {
 	return result
 }
 
+// ResizeRequest holds the parameters for a shelf resize operation.
+type ResizeRequest struct {
+	Rows int      `json:"rows"`
+	Cols int      `json:"cols"`
+	Name *string  `json:"name,omitempty"`
+}
+
+// ResizeResult holds the outcome of a shelf resize operation.
+type ResizeResult struct {
+	Rows               int                 `json:"rows"`
+	Cols               int                 `json:"cols"`
+	Blocked            bool                `json:"blocked,omitempty"`
+	Message            string              `json:"message,omitempty"`
+	AffectedContainers []AffectedContainer `json:"affected,omitempty"`
+	ContainersAdded    int                 `json:"containers_added,omitempty"`
+	ContainersRemoved  int                 `json:"containers_removed,omitempty"`
+}
+
+// AffectedContainer describes a container that would be removed by a resize
+// but still contains items.
+type AffectedContainer struct {
+	Label     string   `json:"label"`
+	ItemCount int      `json:"item_count"`
+	Items     []string `json:"items"`
+}
+
 // labelFor converts a (col, row) pair to a human-readable label.
 // col is the column number (1-based), row becomes a letter (1=A, 2=B, ...).
 // Example: labelFor(3, 2) returns "3B".
