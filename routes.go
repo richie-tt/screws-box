@@ -18,6 +18,23 @@ func newRouter(store *Store) http.Handler {
 
 	r.Get("/", handleGrid(store))
 
+	// API routes
+	r.Route("/api", func(r chi.Router) {
+		r.Route("/items", func(r chi.Router) {
+			r.Get("/", handleListItems(store))
+			r.Post("/", handleCreateItem(store))
+			r.Route("/{itemID}", func(r chi.Router) {
+				r.Get("/", handleGetItem(store))
+				r.Put("/", handleUpdateItem(store))
+				r.Delete("/", handleDeleteItem(store))
+				r.Post("/tags", handleAddTag(store))
+				r.Delete("/tags/{tagName}", handleRemoveTag(store))
+			})
+		})
+		r.Get("/tags", handleListTags(store))
+		r.Get("/containers/{containerID}/items", handleListContainerItems(store))
+	})
+
 	r.Handle("/static/*", http.StripPrefix("/static/",
 		http.FileServerFS(mustSubFS(contentFS, "static"))))
 
