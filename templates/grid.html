@@ -10,8 +10,18 @@
   <p>Check server logs.</p>
 </article>
 {{else}}
-<div class="search-bar">
-  <input type="search" placeholder="Search items..." aria-label="Search items" disabled>
+<div class="search-bar" style="position: relative;">
+  <input type="search" id="search-input" placeholder="Search items..." aria-label="Search items"
+         role="combobox" aria-expanded="false" aria-autocomplete="list"
+         aria-controls="search-results-listbox" aria-activedescendant="" autocomplete="off">
+  <span class="search-spinner" hidden></span>
+  <button type="button" class="search-clear-btn" aria-label="Clear search" hidden>&times;</button>
+  <div class="search-dropdown" id="search-dropdown" hidden>
+    <div class="search-dropdown-header"></div>
+    <ul id="search-results-listbox" role="listbox" aria-label="Search results"></ul>
+    <div class="search-dropdown-empty" hidden></div>
+    <div class="search-dropdown-error" hidden></div>
+  </div>
 </div>
 
 <div class="grid-wrapper">
