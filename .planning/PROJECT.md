@@ -23,8 +23,8 @@ Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elem
 - [ ] Dodawanie elementów do pojemnika przez kliknięcie w siatkę
 - [x] Element ma nazwę i wiele tagów/kategorii (np. "m6", "sprężynowa", "falista", "powiększona") — Validated in Phase 5-7
 - [ ] Jeden pojemnik może zawierać wiele różnych elementów
-- [ ] Wyszukiwanie tekstowe po nazwie lub tagu
-- [ ] Wyniki wyszukiwania jako lista z pozycjami (np. "3B")
+- [x] Wyszukiwanie tekstowe po nazwie lub tagu — Validated in Phase 8: Search Backend (GET /api/search?q=... with name LIKE + exact tag match)
+- [x] Wyniki wyszukiwania jako lista z pozycjami (np. "3B") — Validated in Phase 8: Search Backend (ItemResponse includes container_label)
 - [ ] Wizualne podświetlenie pasujących pojemników na siatce podczas wyszukiwania
 ### Out of Scope
 
@@ -76,4 +76,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after Phase 7 completion*
+*Last updated: 2026-04-03 after Phase 8 completion*
