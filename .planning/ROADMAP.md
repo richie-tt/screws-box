@@ -117,7 +117,9 @@ Plans:
   2. Selecting a suggestion fills the tag field without requiring the user to finish typing
   3. A tag that does not yet exist can still be entered freely (autocomplete is a suggestion, not a constraint)
   4. The suggestion list updates as the user types (not a static pre-loaded list)
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 07-01-PLAN.md — Autocomplete dropdown component + wiring to add/edit forms
 **UI hint**: yes
 
 ### Phase 8: Search Backend
@@ -130,7 +132,9 @@ Plans:
   3. Tag search uses exact match via the junction table — "m6" does NOT match items tagged "m60"
   4. Each result includes the item name, all its tags, and the container position label (e.g., "3B")
   5. An empty query returns no results (not all items)
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 07-01-PLAN.md — Autocomplete dropdown component + wiring to add/edit forms
 
 ### Phase 9: Search Frontend
 **Goal**: Users can find any part in the organizer by typing its name or tag and immediately see which containers hold it, both as a list and highlighted on the grid
@@ -142,7 +146,9 @@ Plans:
   3. Containers matching the search are visually highlighted on the grid; all other containers are visually de-emphasized
   4. Clearing the search field removes all highlights and the results list
   5. The user can navigate through results with keyboard arrow keys and press Enter/Space to focus the corresponding grid cell
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 07-01-PLAN.md — Autocomplete dropdown component + wiring to add/edit forms
 **UI hint**: yes
 
 ### Phase 10: Resilience
