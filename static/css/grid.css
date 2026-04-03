@@ -100,7 +100,7 @@
 .grid-container {
   display: grid;
   /* Phase 4: replace repeat(5, ...) with repeat(var(--grid-cols), ...) set via inline style */
-  grid-template-columns: var(--row-header-width) repeat(5, minmax(var(--cell-min-width), 1fr));
+  grid-template-columns: var(--row-header-width) repeat(var(--grid-cols, 5), minmax(var(--cell-min-width), 1fr));
   gap: var(--grid-gap);
 }
 

@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func newRouter() http.Handler {
+func newRouter(store *Store) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RealIP)
@@ -16,8 +16,7 @@ func newRouter() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 
-	r.Get("/", handleIndex)
-	r.Get("/grid", handleGrid)
+	r.Get("/", handleGrid(store))
 
 	r.Handle("/static/*", http.StripPrefix("/static/",
 		http.FileServerFS(mustSubFS(contentFS, "static"))))

@@ -48,7 +48,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: newRouter(),
+		Handler: newRouter(&store),
 	}
 
 	go func() {

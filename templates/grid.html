@@ -3,260 +3,35 @@
 {{end}}
 
 {{define "content"}}
+{{if .Error}}
+<article>
+  <h2>Nie mozna zaladowac polki</h2>
+  <p>Sprawdz logi serwera.</p>
+</article>
+{{else}}
 <div class="search-bar">
-  <input type="search" placeholder="Szukaj elementow..." aria-label="Szukaj elementow">
-  <div class="search-dropdown" hidden>
-    <ul>
-      <li>M6 x 20mm — <strong>3B</strong></li>
-      <li>Podkladka M8 — <strong>2D</strong></li>
-    </ul>
-  </div>
+  <input type="search" placeholder="Szukaj elementow..." aria-label="Szukaj elementow" disabled>
 </div>
-
-<!-- To demo search highlight: add class "search-active" to .grid-container -->
-<!-- Highlighted cells: add class "highlight" to individual .grid-cell elements -->
 
 <div class="grid-wrapper">
-  <div class="grid-container">
+  <div class="grid-container" style="--grid-cols: {{.Cols}}">
     <!-- Corner cell -->
     <div class="grid-header grid-corner"></div>
-
-    <!-- Column headers: 1 through 5 -->
-    <div class="grid-header col-header">1</div>
-    <div class="grid-header col-header">2</div>
-    <div class="grid-header col-header">3</div>
-    <div class="grid-header col-header">4</div>
-    <div class="grid-header col-header">5</div>
-
-    <!-- Row A -->
-    <div class="grid-header row-header">A</div>
-    <div class="grid-cell cell-light" data-coord="1A">
-      <span class="cell-coord">1A</span>
-      <span class="cell-count">3 elem.</span>
+    <!-- Column headers -->
+    {{range .ColNumbers}}
+    <div class="grid-header col-header">{{.}}</div>
+    {{end}}
+    <!-- Grid rows -->
+    {{range .Grid}}
+    <div class="grid-header row-header">{{.Letter}}</div>
+    {{range .Cells}}
+    <div class="grid-cell {{.CSSClass}}{{if .IsEmpty}} cell-empty{{end}}" data-coord="{{.Coord}}">
+      <span class="cell-coord">{{.Coord}}</span>
+      <span class="cell-count">{{if .IsEmpty}}&mdash;{{else}}{{.Count}} elem.{{end}}</span>
     </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="2A">
-      <span class="cell-coord">2A</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="3A">
-      <span class="cell-coord">3A</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="4A">
-      <span class="cell-coord">4A</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="5A">
-      <span class="cell-coord">5A</span>
-      <span class="cell-count">--</span>
-    </div>
-
-    <!-- Row B -->
-    <div class="grid-header row-header">B</div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="1B">
-      <span class="cell-coord">1B</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="2B">
-      <span class="cell-coord">2B</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark highlight" data-coord="3B">
-      <span class="cell-coord">3B</span>
-      <span class="cell-count">5 elem.</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="4B">
-      <span class="cell-coord">4B</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="5B">
-      <span class="cell-coord">5B</span>
-      <span class="cell-count">--</span>
-    </div>
-
-    <!-- Row C -->
-    <div class="grid-header row-header">C</div>
-    <div class="grid-cell cell-light cell-empty" data-coord="1C">
-      <span class="cell-coord">1C</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="2C">
-      <span class="cell-coord">2C</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="3C">
-      <span class="cell-coord">3C</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="4C">
-      <span class="cell-coord">4C</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="5C">
-      <span class="cell-coord">5C</span>
-      <span class="cell-count">--</span>
-    </div>
-
-    <!-- Row D -->
-    <div class="grid-header row-header">D</div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="1D">
-      <span class="cell-coord">1D</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light highlight" data-coord="2D">
-      <span class="cell-coord">2D</span>
-      <span class="cell-count">1 elem.</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="3D">
-      <span class="cell-coord">3D</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="4D">
-      <span class="cell-coord">4D</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="5D">
-      <span class="cell-coord">5D</span>
-      <span class="cell-count">--</span>
-    </div>
-
-    <!-- Row E -->
-    <div class="grid-header row-header">E</div>
-    <div class="grid-cell cell-light cell-empty" data-coord="1E">
-      <span class="cell-coord">1E</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="2E">
-      <span class="cell-coord">2E</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="3E">
-      <span class="cell-coord">3E</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark" data-coord="4E">
-      <span class="cell-coord">4E</span>
-      <span class="cell-count">2 elem.</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="5E">
-      <span class="cell-coord">5E</span>
-      <span class="cell-count">--</span>
-    </div>
-
-    <!-- Row F -->
-    <div class="grid-header row-header">F</div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="1F">
-      <span class="cell-coord">1F</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="2F">
-      <span class="cell-coord">2F</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="3F">
-      <span class="cell-coord">3F</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="4F">
-      <span class="cell-coord">4F</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="5F">
-      <span class="cell-coord">5F</span>
-      <span class="cell-count">--</span>
-    </div>
-
-    <!-- Row G -->
-    <div class="grid-header row-header">G</div>
-    <div class="grid-cell cell-light cell-empty" data-coord="1G">
-      <span class="cell-coord">1G</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="2G">
-      <span class="cell-coord">2G</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="3G">
-      <span class="cell-coord">3G</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="4G">
-      <span class="cell-coord">4G</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="5G">
-      <span class="cell-coord">5G</span>
-      <span class="cell-count">--</span>
-    </div>
-
-    <!-- Row H -->
-    <div class="grid-header row-header">H</div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="1H">
-      <span class="cell-coord">1H</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="2H">
-      <span class="cell-coord">2H</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="3H">
-      <span class="cell-coord">3H</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="4H">
-      <span class="cell-coord">4H</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark highlight" data-coord="5H">
-      <span class="cell-coord">5H</span>
-      <span class="cell-count">7 elem.</span>
-    </div>
-
-    <!-- Row I -->
-    <div class="grid-header row-header">I</div>
-    <div class="grid-cell cell-light cell-empty" data-coord="1I">
-      <span class="cell-coord">1I</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="2I">
-      <span class="cell-coord">2I</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="3I">
-      <span class="cell-coord">3I</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="4I">
-      <span class="cell-coord">4I</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="5I">
-      <span class="cell-coord">5I</span>
-      <span class="cell-count">--</span>
-    </div>
-
-    <!-- Row J -->
-    <div class="grid-header row-header">J</div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="1J">
-      <span class="cell-coord">1J</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="2J">
-      <span class="cell-coord">2J</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="3J">
-      <span class="cell-coord">3J</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-light cell-empty" data-coord="4J">
-      <span class="cell-coord">4J</span>
-      <span class="cell-count">--</span>
-    </div>
-    <div class="grid-cell cell-dark cell-empty" data-coord="5J">
-      <span class="cell-coord">5J</span>
-      <span class="cell-count">--</span>
-    </div>
+    {{end}}
+    {{end}}
   </div>
 </div>
+{{end}}
 {{end}}
