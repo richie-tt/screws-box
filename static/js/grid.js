@@ -327,7 +327,10 @@
       apiCall('/api/tags?q=' + encodeURIComponent(val)).then(function (result) {
         if (result.ok && Array.isArray(result.data)) {
           var existing = getExistingTags ? getExistingTags() : [];
-          var filtered = result.data.filter(function (t) {
+          var names = result.data.map(function (t) {
+            return typeof t === 'string' ? t : t.name;
+          });
+          var filtered = names.filter(function (t) {
             return existing.indexOf(t) === -1;
           }).slice(0, 5);
           if (filtered.length > 0) {
