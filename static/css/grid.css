@@ -777,3 +777,182 @@
 .autocomplete-dropdown:empty {
   display: none;
 }
+
+/* ==========================================================================
+   11. Settings Panel
+   ========================================================================== */
+
+.settings-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+}
+
+.settings-trigger:hover {
+  color: var(--text);
+  background: var(--bg-inset);
+}
+
+.settings-trigger.active {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.settings-panel {
+  position: fixed;
+  width: 280px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.settings-grid-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.settings-grid-inputs label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-xs);
+}
+
+.settings-grid-inputs input[type="number"] {
+  width: 100%;
+}
+
+.settings-panel .panel-body label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-xs);
+}
+
+.settings-panel .panel-body > input[type="text"] {
+  width: 100%;
+  margin-bottom: var(--space-sm);
+}
+
+@media (max-width: 860px) {
+  .settings-panel {
+    left: 16px !important;
+    right: 16px !important;
+    width: auto;
+    max-width: 280px;
+    margin: 0 auto;
+  }
+}
+
+/* ==========================================================================
+   12. Resize Blocked Modal
+   ========================================================================== */
+
+.resize-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+@media (prefers-color-scheme: dark) {
+  .resize-modal-backdrop {
+    background: rgba(0, 0, 0, 0.6);
+  }
+}
+
+.resize-modal {
+  background: var(--bg-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 400px;
+  width: calc(100% - 32px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  z-index: 201;
+}
+
+.resize-modal-header {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+
+.resize-modal-header h3 {
+  margin: 0;
+  color: var(--danger);
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--font-body);
+}
+
+.resize-modal-body {
+  padding: var(--space-md);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.resize-modal-body > p {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 12px 0;
+}
+
+.resize-blocked-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.resize-blocked-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.resize-blocked-list > li:last-child {
+  border-bottom: none;
+}
+
+.blocked-item-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.blocked-item-names {
+  width: 100%;
+  padding-left: 16px;
+  margin: 4px 0 0 0;
+}
+
+.blocked-item-names li {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.resize-modal-footer {
+  padding: 12px var(--space-md);
+  border-top: 1px solid var(--border);
+  text-align: right;
+}
