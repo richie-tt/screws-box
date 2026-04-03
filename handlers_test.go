@@ -503,6 +503,170 @@ func TestHandleCreateItemTagNormalization(t *testing.T) {
 	}
 }
 
+// --- Search handler tests ---
+
+func TestHandleSearchByName(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTestItem(t, router) // creates "Test Bolt" with tags ["m6","bolt"]
+
+	req := httptest.NewRequest("GET", "/api/search?q=bolt", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp map[string][]ItemResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	results := resp["results"]
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Name != "Test Bolt" {
+		t.Errorf("Name = %q, want %q", results[0].Name, "Test Bolt")
+	}
+}
+
+func TestHandleSearchByTag(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTestItem(t, router) // creates "Test Bolt" with tags ["m6","bolt"]
+
+	req := httptest.NewRequest("GET", "/api/search?q=m6", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp map[string][]ItemResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp["results"]) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(resp["results"]))
+	}
+}
+
+func TestHandleSearchEmpty(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest("GET", "/api/search?q=", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp map[string][]ItemResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp["results"]) != 0 {
+		t.Errorf("len(results) = %d, want 0", len(resp["results"]))
+	}
+}
+
+func TestHandleSearchMissingParam(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest("GET", "/api/search", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp map[string][]ItemResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp["results"]) != 0 {
+		t.Errorf("len(results) = %d, want 0", len(resp["results"]))
+	}
+}
+
+func TestHandleSearchResponseShape(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTestItem(t, router) // creates "Test Bolt" with tags ["m6","bolt"]
+
+	req := httptest.NewRequest("GET", "/api/search?q=bolt", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(w.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := raw["results"]; !ok {
+		t.Fatal("response missing 'results' key")
+	}
+
+	var results []ItemResponse
+	if err := json.Unmarshal(raw["results"], &results); err != nil {
+		t.Fatalf("decode results: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("results is empty, need at least 1 to verify shape")
+	}
+
+	r := results[0]
+	if r.ID <= 0 {
+		t.Error("ID missing")
+	}
+	if r.Name == "" {
+		t.Error("Name missing")
+	}
+	if r.ContainerLabel == "" {
+		t.Error("ContainerLabel missing")
+	}
+	if r.Tags == nil {
+		t.Error("Tags is nil")
+	}
+}
+
+func TestHandleSearchCaseInsensitive(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	// Create an item with uppercase name
+	body := `{"name":"BOLT","container_id":1,"tags":["steel"]}`
+	req := httptest.NewRequest("POST", "/api/items", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: status = %d; body: %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("GET", "/api/search?q=bolt", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string][]ItemResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp["results"]) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(resp["results"]))
+	}
+	if resp["results"][0].Name != "BOLT" {
+		t.Errorf("Name = %q, want %q", resp["results"][0].Name, "BOLT")
+	}
+}
+
 func TestHandleCreateItemDescriptionOptional(t *testing.T) {
 	router, _ := setupTestRouter(t)
 
