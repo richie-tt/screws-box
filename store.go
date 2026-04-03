@@ -659,6 +659,142 @@ func (s *Store) SearchItems(ctx context.Context, query string) ([]ItemResponse, 
 	return items, nil
 }
 
+// ResizeShelf atomically resizes the shelf grid. If shrinking would remove
+// containers that contain items, it returns Blocked=true with affected details.
+// Otherwise it deletes empty out-of-bounds containers, updates shelf dimensions,
+// and creates new containers for expanded bounds.
+func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*ResizeResult, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Get current shelf.
+	var shelfID int64
+	var curRows, curCols int
+	err = tx.QueryRowContext(ctx, "SELECT id, rows, cols FROM shelf LIMIT 1").Scan(&shelfID, &curRows, &curCols)
+	if err != nil {
+		return nil, fmt.Errorf("get shelf: %w", err)
+	}
+
+	// Find containers outside new bounds.
+	outRows, err := tx.QueryContext(ctx,
+		"SELECT c.id, c.col, c.row FROM container c WHERE c.shelf_id = ? AND (c.row > ? OR c.col > ?)",
+		shelfID, newRows, newCols)
+	if err != nil {
+		return nil, fmt.Errorf("query out-of-bounds containers: %w", err)
+	}
+	defer outRows.Close()
+
+	type outContainer struct {
+		id  int64
+		col int
+		row int
+	}
+	var outsideContainers []outContainer
+	for outRows.Next() {
+		var oc outContainer
+		if err := outRows.Scan(&oc.id, &oc.col, &oc.row); err != nil {
+			return nil, fmt.Errorf("scan container: %w", err)
+		}
+		outsideContainers = append(outsideContainers, oc)
+	}
+	if err := outRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate containers: %w", err)
+	}
+
+	// Check each out-of-bounds container for items.
+	var affected []AffectedContainer
+	for _, oc := range outsideContainers {
+		itemRows, err := tx.QueryContext(ctx, "SELECT name FROM item WHERE container_id = ?", oc.id)
+		if err != nil {
+			return nil, fmt.Errorf("query items for container %d: %w", oc.id, err)
+		}
+		var items []string
+		for itemRows.Next() {
+			var name string
+			if err := itemRows.Scan(&name); err != nil {
+				itemRows.Close()
+				return nil, fmt.Errorf("scan item name: %w", err)
+			}
+			items = append(items, name)
+		}
+		itemRows.Close()
+		if err := itemRows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate items: %w", err)
+		}
+
+		if len(items) > 0 {
+			affected = append(affected, AffectedContainer{
+				Label:     labelFor(oc.col, oc.row),
+				ItemCount: len(items),
+				Items:     items,
+			})
+		}
+	}
+
+	// If any containers with items would be removed, block the resize.
+	if len(affected) > 0 {
+		return &ResizeResult{
+			Rows:               curRows,
+			Cols:               curCols,
+			Blocked:            true,
+			Message:            "Cannot resize: containers with items would be removed",
+			AffectedContainers: affected,
+		}, nil
+	}
+
+	// Safe to resize: delete empty containers outside bounds.
+	delResult, err := tx.ExecContext(ctx,
+		"DELETE FROM container WHERE shelf_id = ? AND (row > ? OR col > ?)",
+		shelfID, newRows, newCols)
+	if err != nil {
+		return nil, fmt.Errorf("delete containers: %w", err)
+	}
+	removed, _ := delResult.RowsAffected()
+
+	// Update shelf dimensions.
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE shelf SET rows = ?, cols = ?, updated_at = datetime('now') WHERE id = ?",
+		newRows, newCols, shelfID); err != nil {
+		return nil, fmt.Errorf("update shelf: %w", err)
+	}
+
+	// Insert new containers (INSERT OR IGNORE handles overlap with existing).
+	var added int64
+	for col := 1; col <= newCols; col++ {
+		for row := 1; row <= newRows; row++ {
+			res, err := tx.ExecContext(ctx,
+				"INSERT OR IGNORE INTO container (shelf_id, col, row) VALUES (?, ?, ?)",
+				shelfID, col, row)
+			if err != nil {
+				return nil, fmt.Errorf("insert container (%d,%d): %w", col, row, err)
+			}
+			ra, _ := res.RowsAffected()
+			added += ra
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	return &ResizeResult{
+		Rows:              newRows,
+		Cols:              newCols,
+		ContainersAdded:   int(added),
+		ContainersRemoved: int(removed),
+	}, nil
+}
+
+// UpdateShelfName updates the name of the first shelf.
+func (s *Store) UpdateShelfName(ctx context.Context, name string) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE shelf SET name = ?, updated_at = datetime('now') WHERE id = (SELECT id FROM shelf LIMIT 1)", name)
+	return err
+}
+
 // ListTags returns all tags, optionally filtered by name prefix.
 func (s *Store) ListTags(ctx context.Context, prefix string) ([]TagResponse, error) {
 	var rows *sql.Rows

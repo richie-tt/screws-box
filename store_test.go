@@ -1145,3 +1145,234 @@ func TestTagsInJunctionTable(t *testing.T) {
 		t.Errorf("item_tag count = %d, want 2", count)
 	}
 }
+
+// --- ResizeShelf tests ---
+
+// helper: insert item into container at given (col, row) position
+func insertItemAt(t *testing.T, store *Store, col, row int, name string) {
+	t.Helper()
+	var containerID int64
+	err := store.db.QueryRow("SELECT id FROM container WHERE col = ? AND row = ?", col, row).Scan(&containerID)
+	if err != nil {
+		t.Fatalf("get container at (%d,%d): %v", col, row, err)
+	}
+	ctx := context.Background()
+	_, err = store.CreateItem(ctx, containerID, name, nil, []string{"test"})
+	if err != nil {
+		t.Fatalf("create item %q in container (%d,%d): %v", name, col, row, err)
+	}
+}
+
+func TestResizeShelf_BlockedWhenItemsExist(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	// Place item in container at (col=10, row=5) — the last container in 5x10
+	insertItemAt(t, store, 10, 5, "M6 bolt")
+
+	result, err := store.ResizeShelf(ctx, 3, 3)
+	if err != nil {
+		t.Fatalf("ResizeShelf: %v", err)
+	}
+	if !result.Blocked {
+		t.Fatal("expected Blocked=true, got false")
+	}
+	if len(result.AffectedContainers) == 0 {
+		t.Fatal("expected non-empty AffectedContainers")
+	}
+
+	found := false
+	for _, ac := range result.AffectedContainers {
+		if ac.Label == "10E" {
+			found = true
+			if ac.ItemCount != 1 {
+				t.Errorf("ItemCount = %d, want 1", ac.ItemCount)
+			}
+			if len(ac.Items) != 1 || ac.Items[0] != "M6 bolt" {
+				t.Errorf("Items = %v, want [M6 bolt]", ac.Items)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("AffectedContainers missing label 10E, got: %+v", result.AffectedContainers)
+	}
+
+	// Verify shelf unchanged
+	var rows, cols int
+	store.db.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols)
+	if rows != 5 || cols != 10 {
+		t.Errorf("shelf changed to %dx%d, expected still 5x10", rows, cols)
+	}
+}
+
+func TestResizeShelf_AffectedContainerDetails(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	// Place 2 items in container at (col=5, row=5)
+	insertItemAt(t, store, 5, 5, "M6 bolt")
+	insertItemAt(t, store, 5, 5, "M6 nut")
+
+	result, err := store.ResizeShelf(ctx, 4, 4)
+	if err != nil {
+		t.Fatalf("ResizeShelf: %v", err)
+	}
+	if !result.Blocked {
+		t.Fatal("expected Blocked=true")
+	}
+
+	// Find the container at (5,5) = label "5E"
+	found := false
+	for _, ac := range result.AffectedContainers {
+		if ac.Label == "5E" {
+			found = true
+			if ac.ItemCount != 2 {
+				t.Errorf("ItemCount = %d, want 2", ac.ItemCount)
+			}
+			hasM6Bolt := false
+			hasM6Nut := false
+			for _, name := range ac.Items {
+				if name == "M6 bolt" {
+					hasM6Bolt = true
+				}
+				if name == "M6 nut" {
+					hasM6Nut = true
+				}
+			}
+			if !hasM6Bolt || !hasM6Nut {
+				t.Errorf("Items = %v, want both M6 bolt and M6 nut", ac.Items)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("AffectedContainers missing label 5E, got: %+v", result.AffectedContainers)
+	}
+}
+
+func TestResizeShelf_ExpandCreatesContainers(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	result, err := store.ResizeShelf(ctx, 7, 12)
+	if err != nil {
+		t.Fatalf("ResizeShelf: %v", err)
+	}
+	if result.Blocked {
+		t.Fatal("expected Blocked=false")
+	}
+	if result.Rows != 7 || result.Cols != 12 {
+		t.Errorf("result dims = %dx%d, want 7x12", result.Rows, result.Cols)
+	}
+
+	// Check new containers exist
+	for _, tc := range []struct{ col, row int }{{11, 1}, {1, 6}, {12, 7}} {
+		var count int
+		err := store.db.QueryRow("SELECT COUNT(*) FROM container WHERE col = ? AND row = ?", tc.col, tc.row).Scan(&count)
+		if err != nil {
+			t.Fatalf("query: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("container at (%d,%d) count = %d, want 1", tc.col, tc.row, count)
+		}
+	}
+
+	// Verify total containers = 7*12 = 84
+	var total int
+	store.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total)
+	if total != 84 {
+		t.Errorf("total containers = %d, want 84", total)
+	}
+
+	// Verify shelf updated
+	var rows, cols int
+	store.db.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols)
+	if rows != 7 || cols != 12 {
+		t.Errorf("shelf dims = %dx%d, want 7x12", rows, cols)
+	}
+}
+
+func TestResizeShelf_ShrinkDeletesEmptyContainers(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	result, err := store.ResizeShelf(ctx, 3, 5)
+	if err != nil {
+		t.Fatalf("ResizeShelf: %v", err)
+	}
+	if result.Blocked {
+		t.Fatal("expected Blocked=false")
+	}
+	if result.Rows != 3 || result.Cols != 5 {
+		t.Errorf("result dims = %dx%d, want 3x5", result.Rows, result.Cols)
+	}
+
+	// Verify no containers outside bounds
+	var outOfBounds int
+	store.db.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 5").Scan(&outOfBounds)
+	if outOfBounds != 0 {
+		t.Errorf("out-of-bounds containers = %d, want 0", outOfBounds)
+	}
+
+	// Verify total = 3*5 = 15
+	var total int
+	store.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total)
+	if total != 15 {
+		t.Errorf("total containers = %d, want 15", total)
+	}
+}
+
+func TestResizeShelf_SameSize(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	result, err := store.ResizeShelf(ctx, 5, 10)
+	if err != nil {
+		t.Fatalf("ResizeShelf: %v", err)
+	}
+	if result.Blocked {
+		t.Fatal("expected Blocked=false")
+	}
+	if result.Rows != 5 || result.Cols != 10 {
+		t.Errorf("result dims = %dx%d, want 5x10", result.Rows, result.Cols)
+	}
+
+	// Total should still be 50
+	var total int
+	store.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total)
+	if total != 50 {
+		t.Errorf("total containers = %d, want 50", total)
+	}
+}
+
+func TestResizeShelf_ShrinkWithMixedOccupancy(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	// Place item at (1,1) — within new bounds of 3x3
+	insertItemAt(t, store, 1, 1, "Small bolt")
+
+	result, err := store.ResizeShelf(ctx, 3, 3)
+	if err != nil {
+		t.Fatalf("ResizeShelf: %v", err)
+	}
+	if result.Blocked {
+		t.Fatal("expected Blocked=false — item at (1,1) is within 3x3 bounds")
+	}
+	if result.Rows != 3 || result.Cols != 3 {
+		t.Errorf("result dims = %dx%d, want 3x3", result.Rows, result.Cols)
+	}
+
+	// Verify no containers outside bounds
+	var outOfBounds int
+	store.db.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 3").Scan(&outOfBounds)
+	if outOfBounds != 0 {
+		t.Errorf("out-of-bounds containers = %d, want 0", outOfBounds)
+	}
+
+	// Verify item still exists
+	var itemCount int
+	store.db.QueryRow("SELECT COUNT(*) FROM item").Scan(&itemCount)
+	if itemCount != 1 {
+		t.Errorf("item count = %d, want 1", itemCount)
+	}
+}
