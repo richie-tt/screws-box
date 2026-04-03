@@ -454,6 +454,18 @@
     tagInput.placeholder = 'Type tag, press Enter';
     form.appendChild(tagInput);
 
+    // Wire autocomplete to tag input (must be after tagInput is appended to form)
+    createAutocomplete(tagInput, function (selectedTag) {
+      if (pendingTags.indexOf(selectedTag) === -1) {
+        pendingTags.push(selectedTag);
+        renderTagChips();
+        tagInput.value = '';
+        updateSubmitState();
+      } else {
+        tagInput.value = '';
+      }
+    }, function () { return pendingTags; });
+
     const tagHint = document.createElement('small');
     tagHint.className = 'tag-hint';
     tagHint.textContent = 'Add at least one tag';
@@ -687,6 +699,26 @@
     }
 
     renderEditTagChips();
+
+    // Wire autocomplete to edit tag input
+    createAutocomplete(tagInput, async function (selectedTag) {
+      if (liveTags.indexOf(selectedTag) !== -1) {
+        tagInput.value = '';
+        return;
+      }
+      var result = await apiCall('/api/items/' + item.id + '/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: selectedTag })
+      });
+      if (result.ok) {
+        liveTags.push(selectedTag);
+        renderEditTagChips();
+        tagInput.value = '';
+      } else {
+        errorEl.textContent = (result.data && result.data.error) || 'Failed to add tag';
+      }
+    }, function () { return liveTags; });
 
     // Add tag on Enter (live via API)
     tagInput.addEventListener('keydown', async function (e) {
