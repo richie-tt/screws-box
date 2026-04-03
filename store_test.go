@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -133,6 +134,148 @@ func TestSeedIdempotent(t *testing.T) {
 	}
 	if containerCount != 50 {
 		t.Errorf("container count after two Opens = %d, want 50", containerCount)
+	}
+}
+
+func TestGetGridData(t *testing.T) {
+	store := openTestStore(t)
+
+	data, err := store.GetGridData()
+	if err != nil {
+		t.Fatalf("GetGridData() error: %v", err)
+	}
+
+	if data.ShelfName != "My Organizer" {
+		t.Errorf("ShelfName = %q, want %q", data.ShelfName, "My Organizer")
+	}
+	if data.Rows != 5 {
+		t.Errorf("Rows = %d, want 5", data.Rows)
+	}
+	if data.Cols != 10 {
+		t.Errorf("Cols = %d, want 10", data.Cols)
+	}
+	if len(data.Grid) != 5 {
+		t.Fatalf("len(Grid) = %d, want 5", len(data.Grid))
+	}
+	if len(data.Grid[0].Cells) != 10 {
+		t.Fatalf("len(Grid[0].Cells) = %d, want 10", len(data.Grid[0].Cells))
+	}
+
+	// Row letters
+	if data.Grid[0].Letter != "A" {
+		t.Errorf("Grid[0].Letter = %q, want %q", data.Grid[0].Letter, "A")
+	}
+	if data.Grid[4].Letter != "E" {
+		t.Errorf("Grid[4].Letter = %q, want %q", data.Grid[4].Letter, "E")
+	}
+
+	// Coordinate labels
+	if data.Grid[0].Cells[0].Coord != "1A" {
+		t.Errorf("Grid[0].Cells[0].Coord = %q, want %q", data.Grid[0].Cells[0].Coord, "1A")
+	}
+	if data.Grid[0].Cells[9].Coord != "10A" {
+		t.Errorf("Grid[0].Cells[9].Coord = %q, want %q", data.Grid[0].Cells[9].Coord, "10A")
+	}
+	if data.Grid[1].Cells[2].Coord != "3B" {
+		t.Errorf("Grid[1].Cells[2].Coord = %q, want %q", data.Grid[1].Cells[2].Coord, "3B")
+	}
+
+	// All cells empty (no items seeded)
+	for ri, row := range data.Grid {
+		for ci, cell := range row.Cells {
+			if !cell.IsEmpty {
+				t.Errorf("Grid[%d].Cells[%d].IsEmpty = false, want true", ri, ci)
+			}
+			if cell.Count != 0 {
+				t.Errorf("Grid[%d].Cells[%d].Count = %d, want 0", ri, ci, cell.Count)
+			}
+		}
+	}
+
+	// Chessboard CSS class alternation
+	if data.Grid[0].Cells[0].CSSClass != "cell-light" {
+		t.Errorf("Grid[0].Cells[0].CSSClass = %q, want %q", data.Grid[0].Cells[0].CSSClass, "cell-light")
+	}
+	if data.Grid[0].Cells[1].CSSClass != "cell-dark" {
+		t.Errorf("Grid[0].Cells[1].CSSClass = %q, want %q", data.Grid[0].Cells[1].CSSClass, "cell-dark")
+	}
+}
+
+func TestGetGridDataItemCounts(t *testing.T) {
+	store := openTestStore(t)
+
+	// Find container at col=3, row=2 (coord "3B")
+	var containerID int64
+	err := store.db.QueryRow("SELECT id FROM container WHERE col = 3 AND row = 2").Scan(&containerID)
+	if err != nil {
+		t.Fatalf("find container: %v", err)
+	}
+
+	// Insert 3 items
+	for i := 0; i < 3; i++ {
+		_, err := store.db.Exec("INSERT INTO item (container_id, name) VALUES (?, ?)",
+			containerID, fmt.Sprintf("Item %d", i+1))
+		if err != nil {
+			t.Fatalf("insert item %d: %v", i+1, err)
+		}
+	}
+
+	data, err := store.GetGridData()
+	if err != nil {
+		t.Fatalf("GetGridData() error: %v", err)
+	}
+
+	// Grid[1] = row B, Cells[2] = col 3 -> coord "3B"
+	cell := data.Grid[1].Cells[2]
+	if cell.Count != 3 {
+		t.Errorf("cell 3B Count = %d, want 3", cell.Count)
+	}
+	if cell.IsEmpty {
+		t.Errorf("cell 3B IsEmpty = true, want false")
+	}
+}
+
+func TestGetGridDataCustomDimensions(t *testing.T) {
+	store := openTestStore(t)
+
+	// Update shelf to 2 rows, 3 cols
+	if _, err := store.db.Exec("UPDATE shelf SET rows = 2, cols = 3"); err != nil {
+		t.Fatalf("update shelf: %v", err)
+	}
+	// Delete old containers
+	if _, err := store.db.Exec("DELETE FROM container"); err != nil {
+		t.Fatalf("delete containers: %v", err)
+	}
+	// Insert 6 new containers (3 cols x 2 rows)
+	var shelfID int64
+	store.db.QueryRow("SELECT id FROM shelf LIMIT 1").Scan(&shelfID)
+	for col := 1; col <= 3; col++ {
+		for row := 1; row <= 2; row++ {
+			if _, err := store.db.Exec(
+				"INSERT INTO container (shelf_id, col, row) VALUES (?, ?, ?)",
+				shelfID, col, row,
+			); err != nil {
+				t.Fatalf("insert container (%d,%d): %v", col, row, err)
+			}
+		}
+	}
+
+	data, err := store.GetGridData()
+	if err != nil {
+		t.Fatalf("GetGridData() error: %v", err)
+	}
+
+	if data.Rows != 2 {
+		t.Errorf("Rows = %d, want 2", data.Rows)
+	}
+	if data.Cols != 3 {
+		t.Errorf("Cols = %d, want 3", data.Cols)
+	}
+	if len(data.Grid) != 2 {
+		t.Fatalf("len(Grid) = %d, want 2", len(data.Grid))
+	}
+	if len(data.Grid[0].Cells) != 3 {
+		t.Fatalf("len(Grid[0].Cells) = %d, want 3", len(data.Grid[0].Cells))
 	}
 }
 

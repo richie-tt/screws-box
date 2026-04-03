@@ -43,6 +43,32 @@ type Tag struct {
 	UpdatedAt time.Time
 }
 
+// GridData is the view model for the grid template.
+type GridData struct {
+	ShelfName  string
+	Rows       int
+	Cols       int
+	ColNumbers []int // [1, 2, 3, ..., Cols] for column header iteration
+	Grid       []Row
+	Error      string // non-empty if shelf could not be loaded
+}
+
+// Row represents one row in the grid display.
+type Row struct {
+	Letter string // "A", "B", "C", ...
+	Cells  []Cell
+}
+
+// Cell represents one container position.
+type Cell struct {
+	Coord    string // from labelFor(), e.g. "3B"
+	Col      int    // 1-based
+	Row      int    // 1-based
+	Count    int    // number of items
+	IsEmpty  bool   // true when Count == 0
+	CSSClass string // "cell-light" or "cell-dark"
+}
+
 // labelFor converts a (col, row) pair to a human-readable label.
 // col is the column number (1-based), row becomes a letter (1=A, 2=B, ...).
 // Example: labelFor(3, 2) returns "3B".
