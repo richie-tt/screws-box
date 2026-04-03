@@ -18,7 +18,7 @@ Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elem
 
 ### Active
 
-- [ ] Konfigurowalna siatka półki (np. 5x10 = 10 kolumn, 5 rzędów)
+- [x] Konfigurowalna siatka półki (np. 5x10 = 10 kolumn, 5 rzędów) — Validated in Phase 10: Grid Resize Resilience (PUT /api/shelf/resize with blocking modal)
 - [ ] Wizualna reprezentacja siatki jako szachownica z oznaczeniami (1A, 1B... 5J)
 - [ ] Dodawanie elementów do pojemnika przez kliknięcie w siatkę
 - [x] Element ma nazwę i wiele tagów/kategorii (np. "m6", "sprężynowa", "falista", "powiększona") — Validated in Phase 5-7
