@@ -1,0 +1,123 @@
+/* ==========================================================================
+   Screws Box — Login Page
+   Industrial-utilitarian login. Uses design tokens from app.css.
+   ========================================================================== */
+
+.login-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100dvh - 140px);
+  padding: var(--space-lg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-xl) var(--space-lg) var(--space-lg);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle top accent stripe — industrial bolt-line */
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
+/* Lock icon */
+.login-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto var(--space-md);
+  border-radius: 50%;
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.login-title {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin-bottom: var(--space-xs);
+}
+
+.login-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-lg);
+  line-height: 1.4;
+}
+
+/* Error banner */
+.login-error {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--danger);
+  background: hsl(0, 65%, 50%, 0.08);
+  border: 1px solid hsl(0, 65%, 50%, 0.2);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
+  text-align: left;
+}
+
+/* Form */
+.login-form {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.login-form label {
+  margin-top: var(--space-sm);
+}
+
+.login-form label:first-child {
+  margin-top: 0;
+}
+
+.login-form input {
+  background: var(--bg-inset);
+  border-color: var(--border);
+}
+
+.login-form input:focus {
+  background: var(--bg);
+}
+
+.login-form input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.login-form button {
+  margin-top: var(--space-md);
+  width: 100%;
+  padding: 9px 14px;
+  font-size: 13px;
+}
+
+/* Responsive */
+@media (max-width: 440px) {
+  .login-card {
+    padding: var(--space-lg) var(--space-md) var(--space-md);
+  }
+}

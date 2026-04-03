@@ -13,6 +13,15 @@
 
   // --- Section 2: Utility functions ---
 
+  function validatePassword(pw) {
+    if (pw.length < 12) return 'Password must be at least 12 characters';
+    if (!/[A-Z]/.test(pw)) return 'Password must contain an uppercase letter';
+    if (!/[a-z]/.test(pw)) return 'Password must contain a lowercase letter';
+    if (!/[0-9]/.test(pw)) return 'Password must contain a digit';
+    if (!/[^A-Za-z0-9]/.test(pw)) return 'Password must contain a special character';
+    return '';
+  }
+
   function formatCount(n) {
     if (n === 0) return '\u2014'; // em-dash
     if (n === 1) return '1 item';
@@ -894,6 +903,9 @@
     var shelfName = settingsTrigger.dataset.shelfName || '';
     var shelfRows = settingsTrigger.dataset.shelfRows || '5';
     var shelfCols = settingsTrigger.dataset.shelfCols || '10';
+    var authEnabled = settingsTrigger.dataset.authEnabled === 'true';
+    var authUser = settingsTrigger.dataset.authUser || '';
+    var authHasPass = settingsTrigger.dataset.authHasPass === 'true';
 
     settingsTrigger.classList.add('active');
 
@@ -973,6 +985,76 @@
 
     form.appendChild(gridInputs);
 
+    // --- Auth section ---
+    var divider = document.createElement('hr');
+    divider.className = 'settings-divider';
+    form.appendChild(divider);
+
+    var toggleRow = document.createElement('div');
+    toggleRow.className = 'settings-toggle-row';
+
+    var toggleLabel = document.createElement('label');
+    toggleLabel.textContent = 'Require login';
+    toggleLabel.setAttribute('for', 'settings-auth-toggle');
+    toggleRow.appendChild(toggleLabel);
+
+    var toggleWrap = document.createElement('label');
+    toggleWrap.className = 'toggle-switch';
+    var toggleInput = document.createElement('input');
+    toggleInput.type = 'checkbox';
+    toggleInput.id = 'settings-auth-toggle';
+    toggleInput.checked = authEnabled;
+    toggleWrap.appendChild(toggleInput);
+    var toggleTrack = document.createElement('span');
+    toggleTrack.className = 'toggle-track';
+    toggleWrap.appendChild(toggleTrack);
+    toggleRow.appendChild(toggleWrap);
+    form.appendChild(toggleRow);
+
+    var authFields = document.createElement('div');
+    authFields.className = 'settings-auth-fields';
+    if (!authEnabled) authFields.classList.add('disabled');
+
+    var userLabel = document.createElement('label');
+    userLabel.setAttribute('for', 'settings-auth-user');
+    userLabel.textContent = 'Username';
+    authFields.appendChild(userLabel);
+    var userInput = document.createElement('input');
+    userInput.type = 'text';
+    userInput.id = 'settings-auth-user';
+    userInput.value = authUser;
+    userInput.autocomplete = 'off';
+    userInput.disabled = !authEnabled;
+    authFields.appendChild(userInput);
+
+    var passLabel = document.createElement('label');
+    passLabel.setAttribute('for', 'settings-auth-pass');
+    passLabel.textContent = 'Password';
+    authFields.appendChild(passLabel);
+    var passInput = document.createElement('input');
+    passInput.type = 'password';
+    passInput.id = 'settings-auth-pass';
+    passInput.placeholder = authHasPass ? 'Leave empty to keep current' : 'Enter password';
+    passInput.autocomplete = 'off';
+    passInput.disabled = !authEnabled;
+    authFields.appendChild(passInput);
+
+    form.appendChild(authFields);
+
+    if (authEnabled) toggleRow.classList.add('active');
+    toggleInput.addEventListener('change', function () {
+      var on = toggleInput.checked;
+      userInput.disabled = !on;
+      passInput.disabled = !on;
+      toggleRow.classList.toggle('active', on);
+      if (on) {
+        authFields.classList.remove('disabled');
+        userInput.focus();
+      } else {
+        authFields.classList.add('disabled');
+      }
+    });
+
     var errorEl = document.createElement('div');
     errorEl.className = 'form-error';
     errorEl.id = 'settings-error';
@@ -1026,6 +1108,33 @@
         return;
       }
 
+      // Validate auth fields if enabled
+      var authOn = toggleInput.checked;
+      var authUsername = userInput.value.trim();
+      var authPassword = passInput.value.trim();
+      if (authOn && !authUsername) {
+        errorEl.textContent = 'Username is required when login is enabled';
+        errorEl.hidden = false;
+        userInput.focus();
+        return;
+      }
+      if (authOn && !authPassword && !authHasPass) {
+        errorEl.textContent = 'Password is required when login is enabled';
+        errorEl.hidden = false;
+        passInput.focus();
+        return;
+      }
+      // Validate password strength when provided
+      if (authPassword) {
+        var pwErr = validatePassword(authPassword);
+        if (pwErr) {
+          errorEl.textContent = pwErr;
+          errorEl.hidden = false;
+          passInput.focus();
+          return;
+        }
+      }
+
       // Set busy state
       saveBtn.setAttribute('aria-busy', 'true');
       saveBtn.style.opacity = '0.7';
@@ -1035,6 +1144,29 @@
       var payload = { rows: rows, cols: cols, name: name };
 
       try {
+        // Save auth settings first
+        var authResp = await fetch('/api/shelf/auth', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: authOn, username: authUsername, password: authPassword })
+        });
+        if (!authResp.ok) {
+          var authData = await authResp.json().catch(function () { return null; });
+          errorEl.textContent = (authData && authData.error) || 'Failed to save auth settings';
+          errorEl.hidden = false;
+          saveBtn.removeAttribute('aria-busy');
+          saveBtn.style.opacity = '';
+          saveBtn.disabled = false;
+          cancelBtn.disabled = false;
+          return;
+        }
+
+        // Auth was just enabled or password changed — redirect to login
+        if (authOn) {
+          window.location.href = '/login';
+          return;
+        }
+
         var resp = await fetch('/api/shelf/resize', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

@@ -2,17 +2,70 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"screws-box/internal/model"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// --- Session management ---
+
+var (
+	sessions   sync.Map // token -> username
+	cookieName = "screwsbox_session"
+)
+
+func generateToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func createSession(w http.ResponseWriter, username string) {
+	token := generateToken()
+	sessions.Store(token, username)
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func destroySession(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie(cookieName)
+	if err == nil {
+		sessions.Delete(c.Value)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+}
+
+func getSessionUser(r *http.Request) string {
+	c, err := r.Cookie(cookieName)
+	if err != nil {
+		return ""
+	}
+	if user, ok := sessions.Load(c.Value); ok {
+		return user.(string)
+	}
+	return ""
+}
 
 // StoreService defines the storage operations required by HTTP handlers.
 type StoreService interface {
@@ -29,6 +82,9 @@ type StoreService interface {
 	ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error)
 	ResizeShelf(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	UpdateShelfName(ctx context.Context, name string) error
+	GetAuthSettings(ctx context.Context) (*model.AuthSettings, error)
+	UpdateAuthSettings(ctx context.Context, settings *model.AuthSettings) error
+	ValidateCredentials(ctx context.Context, username, password string) (bool, error)
 }
 
 // --- JSON helpers ---
@@ -413,5 +469,182 @@ func handleListTags(s StoreService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, tags)
+	}
+}
+
+// authMiddleware checks if authentication is enabled and redirects to /login if needed.
+func authMiddleware(s StoreService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			settings, err := s.GetAuthSettings(r.Context())
+			if err != nil {
+				slog.Error("auth middleware: get settings", "err", err)
+				next.ServeHTTP(w, r)
+				return
+			}
+			if !settings.Enabled {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if getSessionUser(r) != "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// Not authenticated — redirect HTML requests, 401 for API
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			http.Redirect(w, r, "/login", http.StatusFound)
+		})
+	}
+}
+
+type loginData struct {
+	Error string
+}
+
+func handleLoginPage(s StoreService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// If auth not enabled, redirect to home
+		settings, err := s.GetAuthSettings(r.Context())
+		if err == nil && !settings.Enabled {
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+		// If already logged in, redirect to home
+		if getSessionUser(r) != "" {
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+		renderLogin(w, loginData{})
+	}
+}
+
+func handleLoginPost(s StoreService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		username := strings.TrimSpace(r.FormValue("username"))
+		password := r.FormValue("password")
+
+		valid, err := s.ValidateCredentials(r.Context(), username, password)
+		if err != nil {
+			slog.Error("login: validate credentials", "err", err)
+			renderLogin(w, loginData{Error: "Internal error, please try again."})
+			return
+		}
+		if !valid {
+			renderLogin(w, loginData{Error: "Invalid username or password."})
+			return
+		}
+		createSession(w, username)
+		http.Redirect(w, r, "/", http.StatusFound)
+	}
+}
+
+func handleLogout() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		destroySession(w, r)
+		http.Redirect(w, r, "/login", http.StatusFound)
+	}
+}
+
+func renderLogin(w http.ResponseWriter, data loginData) {
+	tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
+		"layout.html", "login.html")
+	if err != nil {
+		slog.Error("login template parse error", "err", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.Execute(w, data); err != nil {
+		slog.Error("login template execute error", "err", err)
+	}
+}
+
+func handleGetAuthSettings(s StoreService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		settings, err := s.GetAuthSettings(r.Context())
+		if err != nil {
+			slog.Error("get auth settings", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, settings)
+	}
+}
+
+func validatePassword(pw string) string {
+	if len(pw) < 12 {
+		return "password must be at least 12 characters"
+	}
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+	for _, c := range pw {
+		switch {
+		case 'A' <= c && c <= 'Z':
+			hasUpper = true
+		case 'a' <= c && c <= 'z':
+			hasLower = true
+		case '0' <= c && c <= '9':
+			hasDigit = true
+		default:
+			hasSpecial = true
+		}
+	}
+	if !hasUpper {
+		return "password must contain an uppercase letter"
+	}
+	if !hasLower {
+		return "password must contain a lowercase letter"
+	}
+	if !hasDigit {
+		return "password must contain a digit"
+	}
+	if !hasSpecial {
+		return "password must contain a special character"
+	}
+	return ""
+}
+
+func handleUpdateAuthSettings(s StoreService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req model.AuthSettings
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		req.Username = strings.TrimSpace(req.Username)
+		req.Password = strings.TrimSpace(req.Password)
+		if req.Enabled && req.Username == "" {
+			writeError(w, http.StatusBadRequest, "username is required when auth is enabled")
+			return
+		}
+		// Validate password strength when provided
+		if req.Password != "" {
+			if msg := validatePassword(req.Password); msg != "" {
+				writeError(w, http.StatusBadRequest, msg)
+				return
+			}
+		}
+		// When enabling auth, require a password if none has been set yet
+		if req.Enabled && req.Password == "" {
+			existing, err := s.GetAuthSettings(r.Context())
+			if err != nil || !existing.HasPassword {
+				writeError(w, http.StatusBadRequest, "password is required when auth is enabled")
+				return
+			}
+		}
+		if err := s.UpdateAuthSettings(r.Context(), &req); err != nil {
+			slog.Error("update auth settings", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		// Return updated settings (without password)
+		updated, err := s.GetAuthSettings(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		writeJSON(w, http.StatusOK, updated)
 	}
 }

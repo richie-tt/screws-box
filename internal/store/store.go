@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,6 +15,31 @@ import (
 
 	_ "modernc.org/sqlite"
 )
+
+// hashPassword hashes a password with a random salt using SHA-256.
+// Format: "sha256:<hex-salt>:<hex-hash>"
+func hashPassword(password string) string {
+	salt := make([]byte, 16)
+	rand.Read(salt)
+	h := sha256.Sum256(append(salt, []byte(password)...))
+	return "sha256:" + hex.EncodeToString(salt) + ":" + hex.EncodeToString(h[:])
+}
+
+// checkPassword verifies a password against a stored hash.
+// Supports both hashed (sha256:salt:hash) and legacy plain-text passwords.
+func checkPassword(stored, password string) bool {
+	parts := strings.SplitN(stored, ":", 3)
+	if len(parts) == 3 && parts[0] == "sha256" {
+		salt, err := hex.DecodeString(parts[1])
+		if err != nil {
+			return false
+		}
+		h := sha256.Sum256(append(salt, []byte(password)...))
+		return hex.EncodeToString(h[:]) == parts[2]
+	}
+	// Legacy plain-text comparison
+	return stored == password
+}
 
 // schemaDDL contains all CREATE TABLE and CREATE INDEX statements.
 var schemaDDL = []string{
@@ -55,6 +83,14 @@ var schemaDDL = []string{
 	`CREATE INDEX IF NOT EXISTS idx_item_container_id ON item(container_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_item_tag_item_id ON item_tag(item_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_item_tag_tag_id ON item_tag(tag_id)`,
+}
+
+// migrations runs ALTER TABLE statements for columns added after the initial schema.
+// Each is idempotent: errors from "duplicate column" are silently ignored.
+var migrations = []string{
+	`ALTER TABLE shelf ADD COLUMN auth_enabled INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE shelf ADD COLUMN auth_user TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE shelf ADD COLUMN auth_pass TEXT NOT NULL DEFAULT ''`,
 }
 
 // Store wraps the SQLite database connection.
@@ -118,7 +154,15 @@ func (s *Store) createSchema() error {
 			return fmt.Errorf("schema exec: %w", err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit schema: %w", err)
+	}
+
+	// Run migrations (idempotent ALTER TABLE statements).
+	for _, m := range migrations {
+		s.db.Exec(m) // ignore "duplicate column" errors
+	}
+	return nil
 }
 
 func (s *Store) seedDefaultShelf() error {
@@ -176,8 +220,10 @@ type pos struct{ row, col int }
 func (s *Store) GetGridData() (*model.GridData, error) {
 	var shelfID int64
 	var shelf model.Shelf
-	err := s.db.QueryRow("SELECT id, name, rows, cols FROM shelf LIMIT 1").
-		Scan(&shelfID, &shelf.Name, &shelf.Rows, &shelf.Cols)
+	var authEnabled int
+	var authUser, authPass string
+	err := s.db.QueryRow("SELECT id, name, rows, cols, auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").
+		Scan(&shelfID, &shelf.Name, &shelf.Rows, &shelf.Cols, &authEnabled, &authUser, &authPass)
 	if err != nil {
 		return nil, fmt.Errorf("query shelf: %w", err)
 	}
@@ -242,11 +288,14 @@ func (s *Store) GetGridData() (*model.GridData, error) {
 	}
 
 	return &model.GridData{
-		ShelfName:  shelf.Name,
-		Rows:       shelf.Rows,
-		Cols:       shelf.Cols,
-		ColNumbers: colNums,
-		Grid:       grid,
+		ShelfName:       shelf.Name,
+		Rows:            shelf.Rows,
+		Cols:            shelf.Cols,
+		ColNumbers:      colNums,
+		Grid:            grid,
+		AuthEnabled:     authEnabled != 0,
+		AuthUser:        authUser,
+		AuthHasPassword: authPass != "",
 	}, nil
 }
 
@@ -743,6 +792,62 @@ func (s *Store) UpdateShelfName(ctx context.Context, name string) error {
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE shelf SET name = ?, updated_at = datetime('now') WHERE id = (SELECT id FROM shelf LIMIT 1)", name)
 	return err
+}
+
+// GetAuthSettings returns the authentication settings for the shelf.
+// The password hash is never returned to callers.
+func (s *Store) GetAuthSettings(ctx context.Context) (*model.AuthSettings, error) {
+	var enabled int
+	var user, pass string
+	err := s.db.QueryRowContext(ctx, "SELECT auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").
+		Scan(&enabled, &user, &pass)
+	if err != nil {
+		return nil, fmt.Errorf("get auth settings: %w", err)
+	}
+	return &model.AuthSettings{
+		Enabled:     enabled != 0,
+		Username:    user,
+		HasPassword: pass != "",
+	}, nil
+}
+
+// UpdateAuthSettings saves authentication settings.
+// If Password is empty, the existing password is kept.
+func (s *Store) UpdateAuthSettings(ctx context.Context, settings *model.AuthSettings) error {
+	enabled := 0
+	if settings.Enabled {
+		enabled = 1
+	}
+	if settings.Password != "" {
+		hashed := hashPassword(settings.Password)
+		_, err := s.db.ExecContext(ctx,
+			"UPDATE shelf SET auth_enabled = ?, auth_user = ?, auth_pass = ?, updated_at = datetime('now') WHERE id = (SELECT id FROM shelf LIMIT 1)",
+			enabled, settings.Username, hashed)
+		return err
+	}
+	// No password change — keep existing
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE shelf SET auth_enabled = ?, auth_user = ?, updated_at = datetime('now') WHERE id = (SELECT id FROM shelf LIMIT 1)",
+		enabled, settings.Username)
+	return err
+}
+
+// ValidateCredentials checks username and password against stored auth settings.
+func (s *Store) ValidateCredentials(ctx context.Context, username, password string) (bool, error) {
+	var enabled int
+	var storedUser, storedPass string
+	err := s.db.QueryRowContext(ctx, "SELECT auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").
+		Scan(&enabled, &storedUser, &storedPass)
+	if err != nil {
+		return false, fmt.Errorf("get auth settings: %w", err)
+	}
+	if enabled == 0 {
+		return true, nil
+	}
+	if username != storedUser {
+		return false, nil
+	}
+	return checkPassword(storedPass, password), nil
 }
 
 // ListTags returns all tags, optionally filtered by name prefix.
