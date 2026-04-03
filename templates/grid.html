@@ -1,5 +1,6 @@
 {{define "extra_head"}}
 <link rel="stylesheet" href="/static/css/grid.css">
+<script src="/static/js/grid.js" defer></script>
 {{end}}
 
 {{define "content"}}
@@ -25,13 +26,31 @@
     {{range .Grid}}
     <div class="grid-header row-header">{{.Letter}}</div>
     {{range .Cells}}
-    <div class="grid-cell {{.CSSClass}}{{if .IsEmpty}} cell-empty{{end}}" data-coord="{{.Coord}}">
+    <button class="grid-cell {{.CSSClass}}{{if .IsEmpty}} cell-empty{{end}}"
+            data-coord="{{.Coord}}"
+            data-container-id="{{.ContainerID}}"
+            data-count="{{.Count}}"
+            type="button">
       <span class="cell-coord">{{.Coord}}</span>
       <span class="cell-count">{{if .IsEmpty}}&mdash;{{else}}{{.Count}} elem.{{end}}</span>
-    </div>
+    </button>
     {{end}}
     {{end}}
   </div>
 </div>
+
+<dialog id="item-dialog">
+  <article>
+    <header>
+      <button aria-label="Close" rel="prev" id="dialog-close"></button>
+      <p><strong>Pojemnik <span id="dialog-coord"></span></strong></p>
+    </header>
+    <div id="dialog-body">
+      <!-- Populated dynamically by grid.js -->
+    </div>
+    <footer id="dialog-footer">
+    </footer>
+  </article>
+</dialog>
 {{end}}
 {{end}}
