@@ -1,482 +1,627 @@
-// grid.js -- Item CRUD dialog logic
-// Phase 06 Plan 02: Full dialog, CRUD, and DOM update logic
+// grid.js -- Inline cell expansion CRUD logic
+// Phase 06 Plan 02: Complete rewrite -- inline expansion, no dialog
 (function () {
   'use strict';
 
-  // --- Section 1: DOM references and state ---
+  // --- Section 1: State and DOM references ---
 
-  const dialog = document.getElementById('item-dialog');
-  const dialogCoord = document.getElementById('dialog-coord');
-  const dialogBody = document.getElementById('dialog-body');
-  const dialogFooter = document.getElementById('dialog-footer');
-  const dialogClose = document.getElementById('dialog-close');
   const gridContainer = document.querySelector('.grid-container');
+  if (!gridContainer) return;
 
-  let currentContainerId = null;
+  let expandedCell = null;
 
-  // --- Section 2: Dialog open/close ---
+  // --- Section 2: Utility functions ---
 
-  // Event delegation: single click listener on grid container
-  gridContainer.addEventListener('click', function (e) {
-    var cell = e.target.closest('.grid-cell');
-    if (!cell) return;
-    var coord = cell.dataset.coord;
-    var containerId = cell.dataset.containerId;
-    openDialog(coord, containerId);
-  });
-
-  async function openDialog(coord, containerId) {
-    dialogCoord.textContent = coord;
-    currentContainerId = containerId;
-    dialogBody.textContent = '';
-    dialogFooter.textContent = '';
-
-    try {
-      var resp = await fetch('/api/containers/' + containerId + '/items');
-      if (!resp.ok) {
-        throw new Error('Nie udalo sie zaladowac elementow');
-      }
-      var data = await resp.json();
-      if (data.items && data.items.length > 0) {
-        renderItemList(data.items);
-      } else {
-        renderAddForm();
-      }
-    } catch (err) {
-      dialogBody.textContent = err.message || 'Blad ladowania';
-    }
-
-    dialog.showModal();
+  function formatCount(n) {
+    if (n === 0) return '\u2014'; // em-dash
+    if (n === 1) return '1 item';
+    return n + ' items';
   }
 
-  // Close button
-  dialogClose.addEventListener('click', function () {
-    dialog.close();
+  function pulseCell(cell) {
+    if (!cell) return;
+    cell.classList.remove('pulse');
+    // Force reflow so re-adding the class triggers animation
+    void cell.offsetWidth;
+    cell.classList.add('pulse');
+    cell.addEventListener('animationend', function handler() {
+      cell.classList.remove('pulse');
+      cell.removeEventListener('animationend', handler);
+    });
+  }
+
+  function updateCellCount(containerId, delta) {
+    const cell = findCell(containerId);
+    if (!cell) return;
+
+    let current = parseInt(cell.dataset.count, 10) || 0;
+    let newCount = current + delta;
+    if (newCount < 0) newCount = 0;
+
+    cell.dataset.count = newCount;
+
+    const countSpan = cell.querySelector('.cell-count');
+    if (countSpan) {
+      countSpan.textContent = formatCount(newCount);
+    }
+
+    if (newCount === 0) {
+      cell.classList.add('cell-empty');
+    } else {
+      cell.classList.remove('cell-empty');
+    }
+  }
+
+  async function apiCall(url, options) {
+    try {
+      const resp = await fetch(url, options);
+      if (resp.status === 204) {
+        return { ok: true, status: 204, data: null };
+      }
+      const data = await resp.json().catch(() => null);
+      return { ok: resp.ok, status: resp.status, data: data };
+    } catch (e) {
+      return { ok: false, status: 0, data: { error: 'Connection error. Please try again.' } };
+    }
+  }
+
+  // --- Section 3: Expand/Collapse ---
+
+  // Event delegation on grid container for cell clicks
+  gridContainer.addEventListener('click', function (e) {
+    const cell = e.target.closest('.grid-cell');
+    if (!cell) return;
+    // Do not re-expand an already expanded cell
+    if (cell.classList.contains('expanded')) return;
+    expandCell(cell);
   });
 
-  // Backdrop click to close (Pitfall 4: native dialog does NOT close on backdrop click)
-  dialog.addEventListener('click', function (e) {
-    if (e.target === dialog) {
-      dialog.close();
+  async function expandCell(cell) {
+    // Collapse any previously expanded cell first
+    if (expandedCell) {
+      collapseCell();
+    }
+
+    // Save original HTML for restore on collapse
+    cell._originalHTML = cell.innerHTML;
+
+    // Add expanded class
+    cell.classList.add('expanded');
+
+    // Clear cell contents
+    cell.innerHTML = '';
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'expanded-close';
+    closeBtn.type = 'button';
+    closeBtn.textContent = '\u00D7';
+    closeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      collapseCell();
+    });
+
+    // Header with coord label
+    const header = document.createElement('div');
+    header.className = 'expanded-header';
+    header.textContent = cell.dataset.coord;
+
+    // Content container
+    const content = document.createElement('div');
+
+    cell.appendChild(closeBtn);
+    cell.appendChild(header);
+    cell.appendChild(content);
+
+    expandedCell = cell;
+
+    // Fetch items for this container
+    const containerId = parseInt(cell.dataset.containerId, 10);
+    const result = await apiCall('/api/containers/' + containerId + '/items');
+
+    if (result.ok && result.data && result.data.items && result.data.items.length > 0) {
+      renderItemList(cell, content, result.data.items, containerId);
+    } else {
+      renderAddForm(cell, content, containerId);
+    }
+  }
+
+  function collapseCell() {
+    if (!expandedCell) return;
+    expandedCell.classList.remove('expanded');
+    expandedCell.innerHTML = expandedCell._originalHTML || '';
+    expandedCell = null;
+  }
+
+  // Click-outside handler
+  document.addEventListener('click', function (e) {
+    if (expandedCell && !expandedCell.contains(e.target)) {
+      collapseCell();
     }
   });
 
-  // --- Section 3: Render item list (D-03, D-15) ---
+  // Escape key handler
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      collapseCell();
+    }
+  });
 
-  function renderItemList(items) {
-    dialogBody.textContent = '';
-    dialogFooter.textContent = '';
+  // --- Section 4: Render item list ---
 
-    var ul = document.createElement('ul');
-    ul.style.listStyle = 'none';
-    ul.style.padding = '0';
+  function renderItemList(cell, container, items, containerId) {
+    container.innerHTML = '';
+
+    const ul = document.createElement('ul');
+    ul.className = 'expanded-items';
 
     items.forEach(function (item) {
-      var li = document.createElement('li');
-      li.style.marginBottom = '0.75rem';
-      li.style.paddingBottom = '0.75rem';
-      li.style.borderBottom = '1px solid var(--pico-muted-border-color)';
+      const li = document.createElement('li');
+
+      const row = document.createElement('div');
+      row.className = 'item-row';
 
       // Item name
-      var nameEl = document.createElement('strong');
-      nameEl.textContent = item.name;
-      li.appendChild(nameEl);
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'item-name';
+      nameSpan.textContent = item.name;
+      row.appendChild(nameSpan);
 
-      // Tag badges
+      // Tags as chips (no X button in list view)
       if (item.tags && item.tags.length > 0) {
-        var tagsDiv = document.createElement('div');
-        tagsDiv.className = 'item-tags';
         item.tags.forEach(function (tag) {
-          var badge = document.createElement('span');
-          badge.className = 'tag-badge';
-          badge.textContent = tag;
-          tagsDiv.appendChild(badge);
+          const chip = document.createElement('kbd');
+          chip.className = 'tag-chip';
+          chip.textContent = tag;
+          row.appendChild(chip);
         });
-        li.appendChild(tagsDiv);
       }
 
-      // Action buttons container
-      var actions = document.createElement('div');
-      actions.style.marginTop = '0.5rem';
-      actions.style.display = 'flex';
-      actions.style.gap = '0.5rem';
+      // Action buttons
+      const actions = document.createElement('div');
+      actions.className = 'item-actions';
 
-      // Edit button
-      var editBtn = document.createElement('button');
+      const editBtn = document.createElement('button');
       editBtn.className = 'outline secondary';
-      editBtn.style.padding = '0.25rem 0.5rem';
-      editBtn.style.fontSize = '0.8rem';
-      editBtn.textContent = 'Edytuj';
       editBtn.type = 'button';
-      editBtn.addEventListener('click', function () {
-        renderEditForm(item);
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        renderInlineEdit(li, item, cell, container, containerId);
       });
       actions.appendChild(editBtn);
 
-      // Delete button
-      var deleteBtn = document.createElement('button');
+      const deleteBtn = document.createElement('button');
       deleteBtn.className = 'outline';
-      deleteBtn.style.padding = '0.25rem 0.5rem';
-      deleteBtn.style.fontSize = '0.8rem';
-      deleteBtn.textContent = 'Usun';
       deleteBtn.type = 'button';
-      deleteBtn.addEventListener('click', function () {
-        handleDelete(deleteBtn, item);
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        handleDelete(deleteBtn, item, cell, container, containerId);
       });
       actions.appendChild(deleteBtn);
 
-      li.appendChild(actions);
+      row.appendChild(actions);
+      li.appendChild(row);
       ul.appendChild(li);
     });
 
-    dialogBody.appendChild(ul);
-
-    // "Dodaj element" button in footer
-    var addBtn = document.createElement('button');
-    addBtn.textContent = 'Dodaj element';
+    // "Add item" button below the list
+    const addBtn = document.createElement('button');
     addBtn.type = 'button';
-    addBtn.addEventListener('click', function () {
-      renderAddForm();
+    addBtn.textContent = 'Add item';
+    addBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      renderAddForm(cell, container, containerId);
     });
-    dialogFooter.appendChild(addBtn);
+
+    container.appendChild(ul);
+    container.appendChild(addBtn);
   }
 
-  // --- Section 4: Add form (D-02, D-05, D-06, D-07, D-08, D-09) ---
+  // --- Section 5: Add item form ---
 
-  function renderAddForm() {
-    dialogBody.textContent = '';
-    dialogFooter.textContent = '';
+  function renderAddForm(cell, container, containerId) {
+    container.innerHTML = '';
 
-    var form = document.createElement('form');
-    form.id = 'item-form';
+    const isEmpty = parseInt(cell.dataset.count, 10) === 0;
+
+    if (isEmpty) {
+      const emptyHeading = document.createElement('p');
+      emptyHeading.className = 'expanded-empty';
+      emptyHeading.innerHTML = '<strong>No items</strong><br>Add the first item to this container.';
+      container.appendChild(emptyHeading);
+    }
+
+    const form = document.createElement('form');
+    form.className = 'expanded-form';
 
     // Name field
-    var nameLabel = document.createElement('label');
-    nameLabel.textContent = 'Nazwa ';
-    var nameInput = document.createElement('input');
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Name';
+    const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.name = 'name';
     nameInput.required = true;
-    nameInput.placeholder = 'np. Sruba M6x20';
     nameLabel.appendChild(nameInput);
     form.appendChild(nameLabel);
 
-    // Tags field
-    var tagsLabel = document.createElement('label');
-    tagsLabel.textContent = 'Tagi (po przecinku) ';
-    var tagsInput = document.createElement('input');
-    tagsInput.type = 'text';
-    tagsInput.name = 'tags';
-    tagsInput.required = true;
-    tagsInput.placeholder = 'np. m6, din933, hex';
-    tagsLabel.appendChild(tagsInput);
+    // Description field
+    const descLabel = document.createElement('label');
+    descLabel.textContent = 'Description';
+    const descInput = document.createElement('textarea');
+    descInput.name = 'description';
+    descLabel.appendChild(descInput);
+    form.appendChild(descLabel);
+
+    // Tags section
+    const tagsLabel = document.createElement('label');
+    tagsLabel.textContent = 'Tags';
     form.appendChild(tagsLabel);
 
-    // Error area
-    var errorSmall = document.createElement('small');
-    errorSmall.id = 'form-error';
-    errorSmall.setAttribute('aria-live', 'polite');
-    errorSmall.style.color = 'var(--pico-del-color)';
-    form.appendChild(errorSmall);
+    const chipsContainer = document.createElement('div');
+    chipsContainer.className = 'tag-chips-container';
+    form.appendChild(chipsContainer);
 
-    // Submit button
-    var submitBtn = document.createElement('button');
-    submitBtn.type = 'submit';
-    submitBtn.textContent = 'Dodaj';
-    form.appendChild(submitBtn);
+    const tagInput = document.createElement('input');
+    tagInput.type = 'text';
+    tagInput.placeholder = 'Type tag, press Enter';
+    form.appendChild(tagInput);
 
-    form.addEventListener('submit', async function (e) {
-      e.preventDefault();
-      errorSmall.textContent = '';
-      nameInput.removeAttribute('aria-invalid');
-      tagsInput.removeAttribute('aria-invalid');
-
-      var name = nameInput.value.trim();
-      if (!name) {
-        nameInput.setAttribute('aria-invalid', 'true');
-        errorSmall.textContent = 'Nazwa jest wymagana';
-        return;
-      }
-
-      var tags = tagsInput.value.split(',')
-        .map(function (s) { return s.trim().toLowerCase(); })
-        .filter(Boolean);
-      tags = Array.from(new Set(tags));
-
-      if (tags.length === 0) {
-        tagsInput.setAttribute('aria-invalid', 'true');
-        errorSmall.textContent = 'Wymagany co najmniej jeden tag';
-        return;
-      }
-
-      try {
-        submitBtn.setAttribute('aria-busy', 'true');
-        var resp = await fetch('/api/items', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: name,
-            container_id: parseInt(currentContainerId, 10),
-            tags: tags
-          })
-        });
-
-        if (!resp.ok) {
-          var errData = await resp.json();
-          errorSmall.textContent = errData.error || 'Blad tworzenia elementu';
-          return;
-        }
-
-        updateCellCount(currentContainerId, +1);
-        dialog.close();
-      } catch (err) {
-        errorSmall.textContent = err.message || 'Blad sieci';
-      } finally {
-        submitBtn.removeAttribute('aria-busy');
-      }
-    });
-
-    dialogBody.appendChild(form);
-  }
-
-  // --- Section 5: Edit form (D-05, D-17, D-13) ---
-
-  function renderEditForm(item) {
-    dialogBody.textContent = '';
-    dialogFooter.textContent = '';
-
-    var form = document.createElement('form');
-    form.id = 'item-form';
-
-    // Name field (pre-filled)
-    var nameLabel = document.createElement('label');
-    nameLabel.textContent = 'Nazwa ';
-    var nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.name = 'name';
-    nameInput.required = true;
-    nameInput.value = item.name;
-    nameLabel.appendChild(nameInput);
-    form.appendChild(nameLabel);
-
-    // Tags field (pre-filled)
-    var tagsLabel = document.createElement('label');
-    tagsLabel.textContent = 'Tagi (po przecinku) ';
-    var tagsInput = document.createElement('input');
-    tagsInput.type = 'text';
-    tagsInput.name = 'tags';
-    tagsInput.required = true;
-    tagsInput.value = (item.tags || []).join(', ');
-    tagsLabel.appendChild(tagsInput);
-    form.appendChild(tagsLabel);
+    const tagHint = document.createElement('small');
+    tagHint.className = 'tag-hint';
+    tagHint.textContent = 'Add at least one tag';
+    tagHint.hidden = true;
+    form.appendChild(tagHint);
 
     // Error area
-    var errorSmall = document.createElement('small');
-    errorSmall.id = 'form-error';
-    errorSmall.setAttribute('aria-live', 'polite');
-    errorSmall.style.color = 'var(--pico-del-color)';
-    form.appendChild(errorSmall);
+    const errorEl = document.createElement('small');
+    errorEl.className = 'form-error';
+    errorEl.setAttribute('aria-live', 'polite');
+    form.appendChild(errorEl);
 
     // Button row
-    var btnRow = document.createElement('div');
-    btnRow.style.display = 'flex';
-    btnRow.style.gap = '0.5rem';
+    const formActions = document.createElement('div');
+    formActions.className = 'form-actions';
 
-    var submitBtn = document.createElement('button');
+    const submitBtn = document.createElement('button');
     submitBtn.type = 'submit';
-    submitBtn.textContent = 'Zapisz';
-    btnRow.appendChild(submitBtn);
+    submitBtn.textContent = 'Add item';
+    submitBtn.disabled = true;
+    submitBtn.setAttribute('aria-disabled', 'true');
+    formActions.appendChild(submitBtn);
 
-    var cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'secondary';
-    cancelBtn.textContent = 'Anuluj';
-    cancelBtn.addEventListener('click', async function () {
-      // Re-fetch and re-render item list
-      try {
-        var resp = await fetch('/api/containers/' + currentContainerId + '/items');
-        if (!resp.ok) throw new Error('Blad ladowania');
-        var data = await resp.json();
-        if (data.items && data.items.length > 0) {
-          renderItemList(data.items);
+    // Cancel button only if coming from item list (not empty cell)
+    if (!isEmpty) {
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'secondary';
+      cancelBtn.textContent = 'Discard changes';
+      cancelBtn.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        // Re-fetch and re-render item list
+        const result = await apiCall('/api/containers/' + containerId + '/items');
+        if (result.ok && result.data && result.data.items && result.data.items.length > 0) {
+          renderItemList(cell, container, result.data.items, containerId);
         } else {
-          renderAddForm();
+          renderAddForm(cell, container, containerId);
         }
-      } catch (err) {
-        dialogBody.textContent = err.message;
+      });
+      formActions.appendChild(cancelBtn);
+    }
+
+    form.appendChild(formActions);
+
+    // Tag input behavior
+    let pendingTags = [];
+
+    function updateSubmitState() {
+      const hasName = nameInput.value.trim().length > 0;
+      const hasTags = pendingTags.length > 0;
+      const enabled = hasName && hasTags;
+      submitBtn.disabled = !enabled;
+      submitBtn.setAttribute('aria-disabled', String(!enabled));
+      if (hasTags) {
+        tagHint.hidden = true;
       }
-    });
-    btnRow.appendChild(cancelBtn);
+    }
 
-    form.appendChild(btnRow);
+    function renderTagChips() {
+      chipsContainer.innerHTML = '';
+      pendingTags.forEach(function (tag, index) {
+        const chip = document.createElement('kbd');
+        chip.className = 'tag-chip';
+        chip.textContent = tag;
 
-    form.addEventListener('submit', async function (e) {
-      e.preventDefault();
-      errorSmall.textContent = '';
-      nameInput.removeAttribute('aria-invalid');
-      tagsInput.removeAttribute('aria-invalid');
-
-      var name = nameInput.value.trim();
-      if (!name) {
-        nameInput.setAttribute('aria-invalid', 'true');
-        errorSmall.textContent = 'Nazwa jest wymagana';
-        return;
-      }
-
-      var newTags = tagsInput.value.split(',')
-        .map(function (s) { return s.trim().toLowerCase(); })
-        .filter(Boolean);
-      newTags = Array.from(new Set(newTags));
-
-      if (newTags.length === 0) {
-        tagsInput.setAttribute('aria-invalid', 'true');
-        errorSmall.textContent = 'Wymagany co najmniej jeden tag';
-        return;
-      }
-
-      try {
-        submitBtn.setAttribute('aria-busy', 'true');
-
-        // PUT to update name/container (does NOT update tags)
-        var putResp = await fetch('/api/items/' + item.id, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: name,
-            container_id: parseInt(currentContainerId, 10),
-            description: null
-          })
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '\u00D7';
+        removeBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          pendingTags.splice(index, 1);
+          renderTagChips();
+          updateSubmitState();
         });
 
-        if (!putResp.ok) {
-          var errData = await putResp.json();
-          errorSmall.textContent = errData.error || 'Blad aktualizacji';
-          return;
+        chip.appendChild(removeBtn);
+        chipsContainer.appendChild(chip);
+      });
+    }
+
+    tagInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault(); // CRITICAL: prevent form submit
+        const val = tagInput.value.trim().toLowerCase();
+        if (val && pendingTags.indexOf(val) === -1) {
+          pendingTags.push(val);
+          renderTagChips();
+          tagInput.value = '';
+          updateSubmitState();
         }
-
-        // Tag diff: compute adds and removes
-        var oldTags = item.tags || [];
-        var toAdd = newTags.filter(function (t) { return oldTags.indexOf(t) === -1; });
-        var toRemove = oldTags.filter(function (t) { return newTags.indexOf(t) === -1; });
-
-        // Remove tags
-        for (var i = 0; i < toRemove.length; i++) {
-          var delResp = await fetch('/api/items/' + item.id + '/tags/' + encodeURIComponent(toRemove[i]), {
-            method: 'DELETE'
-          });
-          if (!delResp.ok && delResp.status !== 204) {
-            var delErr = await delResp.json().catch(function () { return { error: 'Blad usuwania tagu' }; });
-            errorSmall.textContent = delErr.error || 'Blad usuwania tagu';
-            return;
-          }
-        }
-
-        // Add tags
-        for (var j = 0; j < toAdd.length; j++) {
-          var addResp = await fetch('/api/items/' + item.id + '/tags', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: toAdd[j] })
-          });
-          if (!addResp.ok) {
-            var addErr = await addResp.json().catch(function () { return { error: 'Blad dodawania tagu' }; });
-            errorSmall.textContent = addErr.error || 'Blad dodawania tagu';
-            return;
-          }
-        }
-
-        dialog.close();
-      } catch (err) {
-        errorSmall.textContent = err.message || 'Blad sieci';
-      } finally {
-        submitBtn.removeAttribute('aria-busy');
       }
     });
 
-    dialogBody.appendChild(form);
+    nameInput.addEventListener('input', function () {
+      updateSubmitState();
+    });
+
+    // Form submit
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      errorEl.textContent = '';
+      nameInput.removeAttribute('aria-invalid');
+
+      const name = nameInput.value.trim();
+      if (!name) {
+        nameInput.setAttribute('aria-invalid', 'true');
+        errorEl.textContent = 'Name is required';
+        return;
+      }
+
+      if (pendingTags.length === 0) {
+        tagHint.hidden = false;
+        return;
+      }
+
+      const desc = descInput.value.trim() || null;
+      const body = {
+        name: name,
+        description: desc,
+        container_id: containerId,
+        tags: pendingTags
+      };
+
+      submitBtn.setAttribute('aria-busy', 'true');
+      const result = await apiCall('/api/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      submitBtn.removeAttribute('aria-busy');
+
+      if (result.ok) {
+        collapseCell();
+        updateCellCount(containerId, +1);
+        pulseCell(findCell(containerId));
+      } else {
+        errorEl.textContent = (result.data && result.data.error) || 'Failed to create item';
+      }
+    });
+
+    container.appendChild(form);
+
+    // Focus name input for convenience
+    nameInput.focus();
   }
 
-  // --- Section 6: Delete with confirmation (D-16) ---
+  // --- Section 6: Inline edit ---
 
-  function handleDelete(btn, item) {
+  function renderInlineEdit(li, item, cell, container, containerId) {
+    li._originalHTML = li.innerHTML;
+    li.innerHTML = '';
+
+    // Use a div, not a form, to avoid nested form issues
+    const editDiv = document.createElement('div');
+    editDiv.className = 'expanded-form';
+
+    // Name input
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Name';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = item.name;
+    nameLabel.appendChild(nameInput);
+    editDiv.appendChild(nameLabel);
+
+    // Description textarea
+    const descLabel = document.createElement('label');
+    descLabel.textContent = 'Description';
+    const descInput = document.createElement('textarea');
+    descInput.value = item.description || '';
+    descLabel.appendChild(descInput);
+    editDiv.appendChild(descLabel);
+
+    // Tags section
+    const tagsLabel = document.createElement('label');
+    tagsLabel.textContent = 'Tags';
+    editDiv.appendChild(tagsLabel);
+
+    const chipsContainer = document.createElement('div');
+    chipsContainer.className = 'tag-chips-container';
+    editDiv.appendChild(chipsContainer);
+
+    const tagInput = document.createElement('input');
+    tagInput.type = 'text';
+    tagInput.placeholder = 'Type tag, press Enter';
+    editDiv.appendChild(tagInput);
+
+    // Error area
+    const errorEl = document.createElement('small');
+    errorEl.className = 'form-error';
+    errorEl.setAttribute('aria-live', 'polite');
+    editDiv.appendChild(errorEl);
+
+    // Local copy of tags for live management
+    let liveTags = (item.tags || []).slice();
+
+    function renderEditTagChips() {
+      chipsContainer.innerHTML = '';
+      liveTags.forEach(function (tag) {
+        const chip = document.createElement('kbd');
+        chip.className = 'tag-chip';
+        chip.textContent = tag;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '\u00D7';
+        removeBtn.addEventListener('click', async function (e) {
+          e.stopPropagation();
+          // Live remove tag via API
+          const result = await apiCall('/api/items/' + item.id + '/tags/' + encodeURIComponent(tag), {
+            method: 'DELETE'
+          });
+          if (result.ok) {
+            liveTags = liveTags.filter(function (t) { return t !== tag; });
+            renderEditTagChips();
+          } else {
+            errorEl.textContent = (result.data && result.data.error) || 'Failed to remove tag';
+          }
+        });
+
+        chip.appendChild(removeBtn);
+        chipsContainer.appendChild(chip);
+      });
+    }
+
+    renderEditTagChips();
+
+    // Add tag on Enter (live via API)
+    tagInput.addEventListener('keydown', async function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const val = tagInput.value.trim().toLowerCase();
+        if (!val || liveTags.indexOf(val) !== -1) return;
+
+        const result = await apiCall('/api/items/' + item.id + '/tags', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: val })
+        });
+
+        if (result.ok) {
+          liveTags.push(val);
+          renderEditTagChips();
+          tagInput.value = '';
+        } else {
+          errorEl.textContent = (result.data && result.data.error) || 'Failed to add tag';
+        }
+      }
+    });
+
+    // Button row
+    const formActions = document.createElement('div');
+    formActions.className = 'form-actions';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.textContent = 'Save';
+    saveBtn.addEventListener('click', async function (e) {
+      e.stopPropagation();
+      errorEl.textContent = '';
+      nameInput.removeAttribute('aria-invalid');
+
+      const name = nameInput.value.trim();
+      if (!name) {
+        nameInput.setAttribute('aria-invalid', 'true');
+        errorEl.textContent = 'Name is required';
+        return;
+      }
+
+      const desc = descInput.value.trim() || null;
+
+      saveBtn.setAttribute('aria-busy', 'true');
+      const result = await apiCall('/api/items/' + item.id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name,
+          description: desc,
+          container_id: containerId
+        })
+      });
+      saveBtn.removeAttribute('aria-busy');
+
+      if (result.ok) {
+        // Re-fetch and re-render item list
+        const listResult = await apiCall('/api/containers/' + containerId + '/items');
+        if (listResult.ok && listResult.data && listResult.data.items) {
+          renderItemList(cell, container, listResult.data.items, containerId);
+        }
+        pulseCell(cell);
+      } else {
+        errorEl.textContent = (result.data && result.data.error) || 'Failed to update item';
+      }
+    });
+    formActions.appendChild(saveBtn);
+
+    const discardBtn = document.createElement('button');
+    discardBtn.type = 'button';
+    discardBtn.className = 'secondary';
+    discardBtn.textContent = 'Discard changes';
+    discardBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      // Restore original li HTML (tags added/removed are already committed via API)
+      li.innerHTML = li._originalHTML;
+    });
+    formActions.appendChild(discardBtn);
+
+    editDiv.appendChild(formActions);
+    li.appendChild(editDiv);
+  }
+
+  // --- Section 7: Delete with inline confirmation ---
+
+  function handleDelete(btn, item, cell, container, containerId) {
     if (btn.dataset.confirm === 'true') {
-      // Second click: actually delete
-      performDelete(item);
+      // Second click: execute delete
+      if (btn._resetTimer) {
+        clearTimeout(btn._resetTimer);
+      }
+      performDelete(item, containerId);
     } else {
       // First click: show confirmation
       btn.dataset.confirm = 'true';
-      btn.textContent = 'Na pewno?';
-      btn.classList.add('contrast');
-      btn.classList.remove('outline');
+      btn.textContent = 'Confirm?';
+      btn.classList.add('btn-confirm');
 
       // Reset after 3 seconds
-      var resetTimer = setTimeout(function () {
+      btn._resetTimer = setTimeout(function () {
         btn.dataset.confirm = '';
-        btn.textContent = 'Usun';
-        btn.classList.remove('contrast');
-        btn.classList.add('outline');
+        btn.textContent = 'Delete';
+        btn.classList.remove('btn-confirm');
       }, 3000);
-
-      // Store timer so we can clear if deleted
-      btn._resetTimer = resetTimer;
     }
   }
 
-  async function performDelete(item) {
-    try {
-      var resp = await fetch('/api/items/' + item.id, {
-        method: 'DELETE'
-      });
+  async function performDelete(item, containerId) {
+    const result = await apiCall('/api/items/' + item.id, {
+      method: 'DELETE'
+    });
 
-      if (!resp.ok && resp.status !== 204) {
-        var errData = await resp.json().catch(function () { return { error: 'Blad usuwania' }; });
-        alert(errData.error || 'Blad usuwania elementu');
-        return;
-      }
-
-      updateCellCount(currentContainerId, -1);
-
-      // Re-fetch items to see if any remain
-      var listResp = await fetch('/api/containers/' + currentContainerId + '/items');
-      if (listResp.ok) {
-        var data = await listResp.json();
-        if (data.items && data.items.length > 0) {
-          renderItemList(data.items);
-        } else {
-          dialog.close();
-        }
-      } else {
-        dialog.close();
-      }
-    } catch (err) {
-      alert(err.message || 'Blad sieci');
+    if (result.ok) {
+      collapseCell();
+      updateCellCount(containerId, -1);
+      pulseCell(findCell(containerId));
+    } else {
+      const msg = (result.data && result.data.error) || 'Failed to delete item';
+      alert(msg);
     }
   }
 
-  // --- Section 7: Cell count update (D-10, D-11, D-12) ---
+  // --- Section 8: Helper -- find cell by container ID ---
 
-  function updateCellCount(containerId, delta) {
-    var cell = document.querySelector('.grid-cell[data-container-id="' + containerId + '"]');
-    if (!cell) return;
-
-    var currentCount = parseInt(cell.dataset.count, 10) || 0;
-    var newCount = currentCount + delta;
-    if (newCount < 0) newCount = 0;
-
-    // Update data attribute (reliable source of truth -- Pitfall 6)
-    cell.dataset.count = newCount;
-
-    // Update visible count text
-    var countSpan = cell.querySelector('.cell-count');
-    if (countSpan) {
-      if (newCount <= 0) {
-        countSpan.innerHTML = '&mdash;';
-        cell.classList.add('cell-empty');
-      } else {
-        countSpan.textContent = newCount + ' elem.';
-        cell.classList.remove('cell-empty');
-      }
-    }
+  function findCell(containerId) {
+    return document.querySelector('.grid-cell[data-container-id="' + containerId + '"]');
   }
 
 })();
