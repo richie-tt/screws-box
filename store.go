@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -597,6 +598,64 @@ func (s *Store) ListAllItems(ctx context.Context) ([]ItemResponse, error) {
 		return nil, fmt.Errorf("iterate items: %w", err)
 	}
 
+	return items, nil
+}
+
+// SearchItems finds items matching query by partial name (case-insensitive LIKE)
+// or exact tag match. Results are deduplicated and sorted by container position
+// (col ASC, row ASC). The query should already be lowercased and trimmed by the caller.
+func (s *Store) SearchItems(ctx context.Context, query string) ([]ItemResponse, error) {
+	if query == "" {
+		return []ItemResponse{}, nil
+	}
+
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
+	likePattern := "%" + escaped + "%"
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT i.id, c.col, c.row
+		FROM item i
+		JOIN container c ON c.id = i.container_id
+		WHERE LOWER(i.name) LIKE ? ESCAPE '\'
+
+		UNION
+
+		SELECT DISTINCT i.id, c.col, c.row
+		FROM item i
+		JOIN container c ON c.id = i.container_id
+		JOIN item_tag it ON it.item_id = i.id
+		JOIN tag t ON t.id = it.tag_id
+		WHERE t.name = ?
+
+		ORDER BY col ASC, row ASC
+	`, likePattern, query)
+	if err != nil {
+		return nil, fmt.Errorf("search items: %w", err)
+	}
+	defer rows.Close()
+
+	var items []ItemResponse
+	for rows.Next() {
+		var id int64
+		var col, row int
+		if err := rows.Scan(&id, &col, &row); err != nil {
+			return nil, fmt.Errorf("scan search result: %w", err)
+		}
+		item, err := s.GetItem(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("get item %d: %w", id, err)
+		}
+		if item != nil {
+			items = append(items, *item)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate search results: %w", err)
+	}
+
+	if items == nil {
+		items = []ItemResponse{}
+	}
 	return items, nil
 }
 
