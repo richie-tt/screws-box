@@ -237,6 +237,42 @@ func TestGetGridDataItemCounts(t *testing.T) {
 	}
 }
 
+func TestGetGridDataContainerIDs(t *testing.T) {
+	store := openTestStore(t)
+
+	data, err := store.GetGridData()
+	if err != nil {
+		t.Fatalf("GetGridData() error: %v", err)
+	}
+
+	// Every cell must have a non-zero ContainerID.
+	seen := make(map[int64]bool)
+	for ri, row := range data.Grid {
+		for ci, cell := range row.Cells {
+			if cell.ContainerID <= 0 {
+				t.Errorf("Grid[%d].Cells[%d].ContainerID = %d, want > 0", ri, ci, cell.ContainerID)
+			}
+			seen[cell.ContainerID] = true
+		}
+	}
+
+	// All 50 ContainerIDs must be unique.
+	if len(seen) != 50 {
+		t.Errorf("unique ContainerIDs = %d, want 50", len(seen))
+	}
+
+	// Verify ContainerID matches the actual DB record for a specific cell.
+	cell3B := data.Grid[1].Cells[2] // row B (index 1), col 3 (index 2)
+	var dbID int64
+	err = store.db.QueryRow("SELECT id FROM container WHERE col = 3 AND row = 2").Scan(&dbID)
+	if err != nil {
+		t.Fatalf("query container: %v", err)
+	}
+	if cell3B.ContainerID != dbID {
+		t.Errorf("cell 3B ContainerID = %d, want DB id %d", cell3B.ContainerID, dbID)
+	}
+}
+
 func TestGetGridDataCustomDimensions(t *testing.T) {
 	store := openTestStore(t)
 
