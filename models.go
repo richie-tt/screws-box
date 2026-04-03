@@ -69,6 +69,52 @@ type Cell struct {
 	CSSClass string // "cell-light" or "cell-dark"
 }
 
+// ItemResponse is the API-ready representation of an item.
+// Tags are a string array (per D-01), ContainerLabel computed via labelFor() (per D-02).
+type ItemResponse struct {
+	ID             int64    `json:"id"`
+	ContainerID    int64    `json:"container_id"`
+	ContainerLabel string   `json:"container_label"`
+	Name           string   `json:"name"`
+	Description    *string  `json:"description"`
+	Tags           []string `json:"tags"`
+	CreatedAt      string   `json:"created_at"`
+	UpdatedAt      string   `json:"updated_at"`
+}
+
+// TagResponse is the API-ready representation of a tag.
+type TagResponse struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// ContainerWithItems is the response for GET /api/containers/:id/items (per D-20).
+type ContainerWithItems struct {
+	ID        int64          `json:"id"`
+	ShelfID   int64          `json:"shelf_id"`
+	Col       int            `json:"col"`
+	Row       int            `json:"row"`
+	Label     string         `json:"label"`
+	Items     []ItemResponse `json:"items"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
+}
+
+// dedup returns a new slice with duplicate strings removed, preserving order.
+func dedup(ss []string) []string {
+	seen := make(map[string]bool, len(ss))
+	result := make([]string, 0, len(ss))
+	for _, s := range ss {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
 // labelFor converts a (col, row) pair to a human-readable label.
 // col is the column number (1-based), row becomes a letter (1=A, 2=B, ...).
 // Example: labelFor(3, 2) returns "3B".
