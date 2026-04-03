@@ -172,3 +172,83 @@ func (s *Store) seedDefaultShelf() error {
 	slog.Info("seeded default shelf", "name", defaultName, "rows", defaultRows, "cols", defaultCols, "containers", defaultRows*defaultCols)
 	return tx.Commit()
 }
+
+// pos is an unexported key for the item-count lookup map.
+type pos struct{ row, col int }
+
+// GetGridData loads the first shelf and builds a GridData view model
+// with container item counts for template rendering.
+func (s *Store) GetGridData() (*GridData, error) {
+	// Load the first shelf.
+	var shelfID int64
+	var shelf Shelf
+	err := s.db.QueryRow("SELECT id, name, rows, cols FROM shelf LIMIT 1").
+		Scan(&shelfID, &shelf.Name, &shelf.Rows, &shelf.Cols)
+	if err != nil {
+		return nil, fmt.Errorf("query shelf: %w", err)
+	}
+
+	// Query containers with item counts.
+	rows, err := s.db.Query(`
+		SELECT c.col, c.row, COUNT(i.id) AS item_count
+		FROM container c
+		LEFT JOIN item i ON c.id = i.container_id
+		WHERE c.shelf_id = ?
+		GROUP BY c.id, c.col, c.row
+		ORDER BY c.row, c.col`, shelfID)
+	if err != nil {
+		return nil, fmt.Errorf("query containers: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[pos]int)
+	for rows.Next() {
+		var col, row, count int
+		if err := rows.Scan(&col, &row, &count); err != nil {
+			return nil, fmt.Errorf("scan container row: %w", err)
+		}
+		counts[pos{row: row, col: col}] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate containers: %w", err)
+	}
+
+	// Build ColNumbers slice.
+	colNums := make([]int, shelf.Cols)
+	for i := range colNums {
+		colNums[i] = i + 1
+	}
+
+	// Build nested Grid structure.
+	grid := make([]Row, shelf.Rows)
+	for r := 1; r <= shelf.Rows; r++ {
+		row := Row{
+			Letter: string(rune('A' + r - 1)),
+			Cells:  make([]Cell, shelf.Cols),
+		}
+		for c := 1; c <= shelf.Cols; c++ {
+			count := counts[pos{row: r, col: c}]
+			cssClass := "cell-light"
+			if (c+r)%2 != 0 {
+				cssClass = "cell-dark"
+			}
+			row.Cells[c-1] = Cell{
+				Coord:    labelFor(c, r),
+				Col:      c,
+				Row:      r,
+				Count:    count,
+				IsEmpty:  count == 0,
+				CSSClass: cssClass,
+			}
+		}
+		grid[r-1] = row
+	}
+
+	return &GridData{
+		ShelfName:  shelf.Name,
+		Rows:       shelf.Rows,
+		Cols:       shelf.Cols,
+		ColNumbers: colNums,
+		Grid:       grid,
+	}, nil
+}
