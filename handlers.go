@@ -316,6 +316,25 @@ func handleListItems(store *Store) http.HandlerFunc {
 	}
 }
 
+func handleSearch(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+		if q == "" {
+			writeJSON(w, http.StatusOK, map[string][]ItemResponse{"results": {}})
+			return
+		}
+
+		items, err := store.SearchItems(r.Context(), q)
+		if err != nil {
+			slog.Error("search items", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"results": items})
+	}
+}
+
 func handleListTags(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
