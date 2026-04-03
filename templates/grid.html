@@ -6,12 +6,12 @@
 {{define "content"}}
 {{if .Error}}
 <article>
-  <h2>Nie mozna zaladowac polki</h2>
-  <p>Sprawdz logi serwera.</p>
+  <h2>Cannot load shelf</h2>
+  <p>Check server logs.</p>
 </article>
 {{else}}
 <div class="search-bar">
-  <input type="search" placeholder="Szukaj elementow..." aria-label="Szukaj elementow" disabled>
+  <input type="search" placeholder="Search items..." aria-label="Search items" disabled>
 </div>
 
 <div class="grid-wrapper">
@@ -32,25 +32,11 @@
             data-count="{{.Count}}"
             type="button">
       <span class="cell-coord">{{.Coord}}</span>
-      <span class="cell-count">{{if .IsEmpty}}&mdash;{{else}}{{.Count}} elem.{{end}}</span>
+      <span class="cell-count">{{if .IsEmpty}}&mdash;{{else}}{{if eq .Count 1}}1 item{{else}}{{.Count}} items{{end}}{{end}}</span>
     </button>
     {{end}}
     {{end}}
   </div>
 </div>
-
-<dialog id="item-dialog">
-  <article>
-    <header>
-      <button aria-label="Close" rel="prev" id="dialog-close"></button>
-      <p><strong>Pojemnik <span id="dialog-coord"></span></strong></p>
-    </header>
-    <div id="dialog-body">
-      <!-- Populated dynamically by grid.js -->
-    </div>
-    <footer id="dialog-footer">
-    </footer>
-  </article>
-</dialog>
 {{end}}
 {{end}}

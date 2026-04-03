@@ -113,7 +113,7 @@ func handleGrid(store *Store) http.HandlerFunc {
 		data, err := store.GetGridData()
 		if err != nil {
 			slog.Error("failed to load grid data", "err", err)
-			data = &GridData{Error: "Nie udalo sie zaladowac polki -- sprawdz logi serwera."}
+			data = &GridData{Error: "Cannot load shelf -- check server logs."}
 		}
 
 		tmpl, err := template.ParseFS(mustSubFS(contentFS, "templates"),
