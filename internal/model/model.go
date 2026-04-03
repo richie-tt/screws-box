@@ -45,12 +45,23 @@ type Tag struct {
 
 // GridData is the view model for the grid template.
 type GridData struct {
-	ShelfName  string
-	Rows       int
-	Cols       int
-	ColNumbers []int
-	Grid       []Row
-	Error      string
+	ShelfName      string
+	Rows           int
+	Cols           int
+	ColNumbers     []int
+	Grid           []Row
+	Error          string
+	AuthEnabled    bool
+	AuthUser       string
+	AuthHasPassword bool
+}
+
+// AuthSettings holds authentication configuration.
+type AuthSettings struct {
+	Enabled     bool   `json:"enabled"`
+	Username    string `json:"username"`
+	Password    string `json:"password,omitempty"`
+	HasPassword bool   `json:"has_password"`
 }
 
 // Row represents one row in the grid display.

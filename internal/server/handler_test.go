@@ -873,6 +873,9 @@ type mockStore struct {
 	listTagsFn             func(ctx context.Context, prefix string) ([]model.TagResponse, error)
 	resizeShelfFn          func(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	updateShelfNameFn      func(ctx context.Context, name string) error
+	getAuthSettingsFn        func(ctx context.Context) (*model.AuthSettings, error)
+	updateAuthSettingsFn     func(ctx context.Context, settings *model.AuthSettings) error
+	validateCredentialsFn    func(ctx context.Context, username, password string) (bool, error)
 }
 
 func (m *mockStore) GetGridData() (*model.GridData, error) { return m.getGridDataFn() }
@@ -912,6 +915,15 @@ func (m *mockStore) ResizeShelf(ctx context.Context, newRows, newCols int) (*mod
 func (m *mockStore) UpdateShelfName(ctx context.Context, name string) error {
 	return m.updateShelfNameFn(ctx, name)
 }
+func (m *mockStore) GetAuthSettings(ctx context.Context) (*model.AuthSettings, error) {
+	return m.getAuthSettingsFn(ctx)
+}
+func (m *mockStore) UpdateAuthSettings(ctx context.Context, settings *model.AuthSettings) error {
+	return m.updateAuthSettingsFn(ctx, settings)
+}
+func (m *mockStore) ValidateCredentials(ctx context.Context, username, password string) (bool, error) {
+	return m.validateCredentialsFn(ctx, username, password)
+}
 
 func errStore() *mockStore {
 	dbErr := fmt.Errorf("database error")
@@ -929,6 +941,9 @@ func errStore() *mockStore {
 		listTagsFn:             func(_ context.Context, _ string) ([]model.TagResponse, error) { return nil, dbErr },
 		resizeShelfFn:          func(_ context.Context, _, _ int) (*model.ResizeResult, error) { return nil, dbErr },
 		updateShelfNameFn:      func(_ context.Context, _ string) error { return dbErr },
+		getAuthSettingsFn:      func(_ context.Context) (*model.AuthSettings, error) { return nil, dbErr },
+		updateAuthSettingsFn:   func(_ context.Context, _ *model.AuthSettings) error { return dbErr },
+		validateCredentialsFn:  func(_ context.Context, _, _ string) (bool, error) { return false, dbErr },
 	}
 }
 
@@ -1036,6 +1051,102 @@ func TestHandleResizeShelfStoreError(t *testing.T) {
 	router := NewRouter(errStore())
 	body := `{"rows":5,"cols":10}`
 	req := httptest.NewRequest("PUT", "/api/shelf/resize", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// --- Auth settings handler tests ---
+
+func TestHandleGetAuthSettings(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	req := httptest.NewRequest("GET", "/api/shelf/auth", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var settings model.AuthSettings
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&settings))
+	assert.False(t, settings.Enabled)
+	assert.Empty(t, settings.Username)
+}
+
+func TestHandleUpdateAuthSettings(t *testing.T) {
+	router, s := setupTestRouter(t)
+
+	body := `{"enabled":true,"username":"admin","password":"Secret123!@#"}`
+	req := httptest.NewRequest("PUT", "/api/shelf/auth", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Verify persisted
+	var enabled int
+	var user, pass string
+	err := s.DB().QueryRow("SELECT auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").Scan(&enabled, &user, &pass)
+	require.NoError(t, err)
+	assert.Equal(t, 1, enabled)
+	assert.Equal(t, "admin", user)
+	assert.True(t, strings.HasPrefix(pass, "sha256:"), "password should be hashed")
+}
+
+func TestHandleUpdateAuthSettingsDisable(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	body := `{"enabled":false,"username":"","password":""}`
+	req := httptest.NewRequest("PUT", "/api/shelf/auth", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleUpdateAuthSettingsValidation(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"no username", `{"enabled":true,"username":"","password":"pass"}`},
+		{"no password", `{"enabled":true,"username":"admin","password":""}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("PUT", "/api/shelf/auth", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func TestHandleUpdateAuthSettingsInvalidJSON(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	req := httptest.NewRequest("PUT", "/api/shelf/auth", strings.NewReader("bad"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleGetAuthSettingsStoreError(t *testing.T) {
+	router := NewRouter(errStore())
+	req := httptest.NewRequest("GET", "/api/shelf/auth", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestHandleUpdateAuthSettingsStoreError(t *testing.T) {
+	router := NewRouter(errStore())
+	body := `{"enabled":true,"username":"admin","password":"Secret123!@#"}`
+	req := httptest.NewRequest("PUT", "/api/shelf/auth", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
