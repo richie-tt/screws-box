@@ -32,7 +32,15 @@
   <div class="grid-wrapper">
     <div class="grid-container" style="--grid-cols: {{.Cols}}">
       <!-- Corner cell -->
-      <div class="grid-header grid-corner"></div>
+      <div class="grid-header grid-corner">
+        <button class="ghost settings-trigger" aria-label="Grid settings" title="Grid settings"
+                data-shelf-name="{{.ShelfName}}" data-shelf-rows="{{.Rows}}" data-shelf-cols="{{.Cols}}">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="8" r="2.5"/>
+            <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M2.9 2.9l1.06 1.06M12.04 12.04l1.06 1.06M2.9 13.1l1.06-1.06M12.04 3.96l1.06-1.06"/>
+          </svg>
+        </button>
+      </div>
       <!-- Column headers -->
       {{range .ColNumbers}}
       <div class="grid-header col-header">{{.}}</div>

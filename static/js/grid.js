@@ -80,6 +80,11 @@
   });
 
   async function expandCell(cell) {
+    // Close settings panel if open (mutual exclusion)
+    if (settingsPanel) {
+      closeSettingsPanel();
+    }
+
     // Collapse any previously expanded panel first
     if (expandedCell) {
       collapseCell();
@@ -858,6 +863,362 @@
   function findCell(containerId) {
     return document.querySelector('.grid-cell[data-container-id="' + containerId + '"]');
   }
+
+  // --- Section 8b: Settings Panel ---
+
+  var settingsPanel = null;
+  var settingsTrigger = document.querySelector('.settings-trigger');
+
+  function closeSettingsPanel() {
+    if (settingsPanel) {
+      settingsPanel.remove();
+      settingsPanel = null;
+    }
+    if (settingsTrigger) {
+      settingsTrigger.classList.remove('active');
+      settingsTrigger.focus();
+    }
+  }
+
+  function openSettingsPanel() {
+    // Close any open cell panel first (mutual exclusion)
+    collapseCell();
+
+    if (settingsPanel) {
+      closeSettingsPanel();
+      return;
+    }
+
+    if (!settingsTrigger) return;
+
+    var shelfName = settingsTrigger.dataset.shelfName || '';
+    var shelfRows = settingsTrigger.dataset.shelfRows || '5';
+    var shelfCols = settingsTrigger.dataset.shelfCols || '10';
+
+    settingsTrigger.classList.add('active');
+
+    var panel = document.createElement('div');
+    panel.className = 'settings-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Grid settings');
+
+    // Header
+    var header = document.createElement('div');
+    header.className = 'panel-header';
+    var coordSpan = document.createElement('span');
+    coordSpan.className = 'panel-coord';
+    coordSpan.textContent = 'Settings';
+    header.appendChild(coordSpan);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'expanded-close';
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '\u00D7';
+    closeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      closeSettingsPanel();
+    });
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    // Body
+    var body = document.createElement('div');
+    body.className = 'panel-body';
+
+    var nameLabel = document.createElement('label');
+    nameLabel.setAttribute('for', 'settings-name');
+    nameLabel.textContent = 'Shelf name';
+    body.appendChild(nameLabel);
+    var nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.id = 'settings-name';
+    nameInput.value = shelfName;
+    nameInput.maxLength = 100;
+    body.appendChild(nameInput);
+
+    var gridInputs = document.createElement('div');
+    gridInputs.className = 'settings-grid-inputs';
+
+    var colDiv = document.createElement('div');
+    var colLabel = document.createElement('label');
+    colLabel.setAttribute('for', 'settings-cols');
+    colLabel.textContent = 'Columns';
+    colDiv.appendChild(colLabel);
+    var colInput = document.createElement('input');
+    colInput.type = 'number';
+    colInput.id = 'settings-cols';
+    colInput.min = '1';
+    colInput.max = '30';
+    colInput.step = '1';
+    colInput.value = shelfCols;
+    colDiv.appendChild(colInput);
+    gridInputs.appendChild(colDiv);
+
+    var rowDiv = document.createElement('div');
+    var rowLabel = document.createElement('label');
+    rowLabel.setAttribute('for', 'settings-rows');
+    rowLabel.textContent = 'Rows';
+    rowDiv.appendChild(rowLabel);
+    var rowInput = document.createElement('input');
+    rowInput.type = 'number';
+    rowInput.id = 'settings-rows';
+    rowInput.min = '1';
+    rowInput.max = '26';
+    rowInput.step = '1';
+    rowInput.value = shelfRows;
+    rowDiv.appendChild(rowInput);
+    gridInputs.appendChild(rowDiv);
+
+    body.appendChild(gridInputs);
+
+    var errorEl = document.createElement('div');
+    errorEl.className = 'form-error';
+    errorEl.id = 'settings-error';
+    errorEl.hidden = true;
+    body.appendChild(errorEl);
+
+    var actions = document.createElement('div');
+    actions.className = 'form-actions';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'secondary';
+    cancelBtn.id = 'settings-cancel';
+    cancelBtn.textContent = 'Discard Changes';
+    cancelBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      closeSettingsPanel();
+    });
+    actions.appendChild(cancelBtn);
+
+    var saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.id = 'settings-save';
+    saveBtn.textContent = 'Save Settings';
+    saveBtn.addEventListener('click', async function (e) {
+      e.stopPropagation();
+
+      // Clear previous errors
+      errorEl.hidden = true;
+      errorEl.textContent = '';
+      rowInput.removeAttribute('aria-invalid');
+      colInput.removeAttribute('aria-invalid');
+
+      var rows = parseInt(rowInput.value, 10);
+      var cols = parseInt(colInput.value, 10);
+      var name = nameInput.value.trim();
+
+      // Client-side validation
+      if (isNaN(rows) || rows < 1 || rows > 26) {
+        rowInput.setAttribute('aria-invalid', 'true');
+        errorEl.textContent = '1-26 rows allowed (A-Z)';
+        errorEl.hidden = false;
+        rowInput.focus();
+        return;
+      }
+      if (isNaN(cols) || cols < 1 || cols > 30) {
+        colInput.setAttribute('aria-invalid', 'true');
+        errorEl.textContent = '1-30 columns allowed';
+        errorEl.hidden = false;
+        colInput.focus();
+        return;
+      }
+
+      // Set busy state
+      saveBtn.setAttribute('aria-busy', 'true');
+      saveBtn.style.opacity = '0.7';
+      saveBtn.disabled = true;
+      cancelBtn.disabled = true;
+
+      var payload = { rows: rows, cols: cols };
+      if (name) payload.name = name;
+
+      try {
+        var resp = await fetch('/api/shelf/resize', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        var data = await resp.json().catch(function () { return null; });
+
+        if (resp.status === 200) {
+          window.location.reload();
+          return;
+        }
+
+        if (resp.status === 409 && data && data.affected) {
+          closeSettingsPanel();
+          showResizeBlockedModal(data.affected);
+          return;
+        }
+
+        // 400 or other error
+        errorEl.textContent = (data && (data.error || data.message)) || 'An error occurred';
+        errorEl.hidden = false;
+      } catch (err) {
+        errorEl.textContent = 'An error occurred';
+        errorEl.hidden = false;
+      }
+
+      // Re-enable buttons
+      saveBtn.removeAttribute('aria-busy');
+      saveBtn.style.opacity = '';
+      saveBtn.disabled = false;
+      cancelBtn.disabled = false;
+    });
+    actions.appendChild(saveBtn);
+
+    body.appendChild(actions);
+    panel.appendChild(body);
+
+    document.body.appendChild(panel);
+    settingsPanel = panel;
+
+    // Position panel near the gear icon
+    var rect = settingsTrigger.getBoundingClientRect();
+    var panelWidth = 280;
+    var topPos = rect.bottom + 8;
+    var leftPos = rect.left;
+
+    // Keep within viewport
+    if (leftPos + panelWidth > window.innerWidth - 8) {
+      leftPos = window.innerWidth - panelWidth - 8;
+    }
+    if (leftPos < 8) leftPos = 8;
+    if (topPos + 300 > window.innerHeight) {
+      topPos = Math.max(8, rect.top - 300 - 8);
+    }
+
+    // Mobile: center horizontally
+    if (window.innerWidth <= 860) {
+      panel.style.top = topPos + 'px';
+      // Let CSS handle horizontal centering via left/right !important
+    } else {
+      panel.style.top = topPos + 'px';
+      panel.style.left = leftPos + 'px';
+    }
+
+    nameInput.focus();
+  }
+
+  function showResizeBlockedModal(affected) {
+    var backdrop = document.createElement('div');
+    backdrop.className = 'resize-modal-backdrop';
+
+    var modal = document.createElement('div');
+    modal.className = 'resize-modal';
+    modal.setAttribute('role', 'alertdialog');
+    modal.setAttribute('aria-labelledby', 'resize-modal-title');
+
+    // Header
+    var mHeader = document.createElement('div');
+    mHeader.className = 'resize-modal-header';
+    var h3 = document.createElement('h3');
+    h3.id = 'resize-modal-title';
+    h3.textContent = 'Cannot Resize';
+    mHeader.appendChild(h3);
+    modal.appendChild(mHeader);
+
+    // Body
+    var mBody = document.createElement('div');
+    mBody.className = 'resize-modal-body';
+    var desc = document.createElement('p');
+    desc.textContent = 'The following containers have items. Move or delete these items before resizing.';
+    mBody.appendChild(desc);
+
+    var ul = document.createElement('ul');
+    ul.className = 'resize-blocked-list';
+    affected.forEach(function (container) {
+      var li = document.createElement('li');
+
+      var badge = document.createElement('span');
+      badge.className = 'position-badge';
+      badge.textContent = container.label;
+      li.appendChild(badge);
+
+      var countSpan = document.createElement('span');
+      countSpan.className = 'blocked-item-count';
+      countSpan.textContent = container.item_count + (container.item_count === 1 ? ' item' : ' items');
+      li.appendChild(countSpan);
+
+      if (container.items && container.items.length > 0) {
+        var itemUl = document.createElement('ul');
+        itemUl.className = 'blocked-item-names';
+        container.items.forEach(function (itemName) {
+          var itemLi = document.createElement('li');
+          itemLi.textContent = itemName;
+          itemUl.appendChild(itemLi);
+        });
+        li.appendChild(itemUl);
+      }
+
+      ul.appendChild(li);
+    });
+    mBody.appendChild(ul);
+    modal.appendChild(mBody);
+
+    // Footer
+    var mFooter = document.createElement('div');
+    mFooter.className = 'resize-modal-footer';
+    var okBtn = document.createElement('button');
+    okBtn.id = 'resize-modal-ok';
+    okBtn.textContent = 'Back to Grid';
+    okBtn.addEventListener('click', function () {
+      closeResizeModal();
+    });
+    mFooter.appendChild(okBtn);
+    modal.appendChild(mFooter);
+
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+
+    // Focus the OK button
+    okBtn.focus();
+
+    // Close on backdrop click
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) {
+        closeResizeModal();
+      }
+    });
+
+    // Close on Escape
+    function onEsc(e) {
+      if (e.key === 'Escape') {
+        closeResizeModal();
+        document.removeEventListener('keydown', onEsc);
+      }
+    }
+    document.addEventListener('keydown', onEsc);
+
+    function closeResizeModal() {
+      backdrop.remove();
+      if (settingsTrigger) settingsTrigger.focus();
+    }
+  }
+
+  // Wire gear button click
+  if (settingsTrigger) {
+    settingsTrigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openSettingsPanel();
+    });
+  }
+
+  // Close settings panel on click outside
+  document.addEventListener('click', function (e) {
+    if (settingsPanel && !settingsPanel.contains(e.target) && e.target !== settingsTrigger && !settingsTrigger.contains(e.target)) {
+      closeSettingsPanel();
+    }
+  });
+
+  // Close settings panel on Escape (integrated with existing handler)
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && settingsPanel) {
+      closeSettingsPanel();
+      e.stopPropagation();
+    }
+  });
 
   // --- Section 9: Search ---
 
