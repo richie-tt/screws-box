@@ -68,7 +68,7 @@ func TestStaticCSS(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/static/css/pico.classless.min.css")
+	resp, err := http.Get(ts.URL + "/static/css/app.css")
 	if err != nil {
 		t.Fatalf("GET static CSS failed: %v", err)
 	}

@@ -1,121 +1,117 @@
 /* ==========================================================================
-   Screws Box — Grid CSS
-   Chessboard grid layout for screws organizer.
-   Design: Pico CSS 2.x base + custom CSS Grid.
-   Phase 3: Static mockup styles.
+   Screws Box — Grid & Panel Styles
+   Depends on design tokens from app.css.
    ========================================================================== */
 
-/* --------------------------------------------------------------------------
-   1. CSS Custom Properties — Light theme (default) + Dark theme override
-   -------------------------------------------------------------------------- */
-
+/* --- Grid-specific tokens --- */
 :root {
-  /* Chessboard cell colors — warm tones for workshop feel */
-  --cell-light: hsl(40, 20%, 95%);
-  --cell-dark: hsl(40, 15%, 85%);
-  --cell-empty-opacity: 0.6;
-  --grid-gap: 2px;
-  --cell-min-width: 4rem;       /* 64px */
-  --cell-min-height: 3.5rem;    /* 56px */
-  --row-header-width: 3rem;     /* 48px */
-  --col-header-height: 2.5rem;  /* 40px */
+  --cell-light: hsl(38, 18%, 93%);
+  --cell-dark: hsl(36, 14%, 84%);
+  --cell-empty-opacity: 0.55;
+  --grid-gap: 3px;
+  --cell-min-width: 5.5rem;
+  --cell-min-height: 3.8rem;
+  --row-header-width: 2.5rem;
+  --col-header-height: 2rem;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --cell-light: hsl(220, 10%, 25%);
-    --cell-dark: hsl(220, 10%, 18%);
-    --cell-empty-opacity: 0.5;
+  :root {
+    --cell-light: hsl(220, 8%, 22%);
+    --cell-dark: hsl(220, 8%, 16%);
+    --cell-empty-opacity: 0.45;
   }
 }
 
-/* --------------------------------------------------------------------------
-   2. Search bar (sticky top, always accessible)
-   -------------------------------------------------------------------------- */
+/* ==========================================================================
+   1. Search Bar
+   ========================================================================== */
 
 .search-bar {
   position: sticky;
   top: 0;
   z-index: 20;
-  background-color: var(--pico-background-color);
-  padding: 0.75rem 1rem;
+  background-color: var(--bg);
+  padding: var(--space-sm) 0;
 }
 
 .search-bar input[type="search"] {
-  margin-bottom: 0;
+  background: var(--bg-inset);
+  border-color: transparent;
+  border-radius: var(--radius-lg);
+  font-size: 0.85rem;
+  padding: 8px 12px;
 }
 
+.search-bar input[type="search"]:focus {
+  background: var(--bg-raised);
+  border-color: var(--accent);
+}
+
+/* Search dropdown */
 .search-dropdown {
   position: absolute;
   top: 100%;
   left: 0;
   right: 0;
   z-index: 21;
-  background-color: var(--pico-background-color);
-  border: 1px solid var(--pico-muted-border-color);
-  border-radius: var(--pico-border-radius);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  max-height: 300px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-height: 260px;
   overflow-y: auto;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.15s, transform 0.15s;
 }
+.search-dropdown[hidden] { display: none; }
+.search-dropdown.visible { opacity: 1; transform: translateY(0); }
 
-.search-dropdown[hidden] {
-  display: none;
-}
-
-.search-dropdown ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
+.search-dropdown ul { list-style: none; }
 .search-dropdown li {
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--pico-muted-border-color);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.1s;
 }
+.search-dropdown li:hover { background: var(--accent-subtle); }
 
-.search-dropdown li:last-child {
-  border-bottom: none;
-}
-
-.search-dropdown li:hover {
-  background-color: var(--pico-primary-focus);
-}
-
-/* --------------------------------------------------------------------------
-   3. Grid wrapper — horizontal scroll on mobile
-   -------------------------------------------------------------------------- */
+/* ==========================================================================
+   2. Grid Layout
+   ========================================================================== */
 
 .grid-wrapper {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  margin-top: 1rem;
+  margin-top: var(--space-sm);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
 }
-
-/* --------------------------------------------------------------------------
-   4. Grid container
-   -------------------------------------------------------------------------- */
 
 .grid-container {
   display: grid;
-  /* Phase 4: replace repeat(5, ...) with repeat(var(--grid-cols), ...) set via inline style */
   grid-template-columns: var(--row-header-width) repeat(var(--grid-cols, 5), minmax(var(--cell-min-width), 1fr));
   gap: var(--grid-gap);
+  padding: var(--grid-gap);
 }
 
-/* --------------------------------------------------------------------------
-   5. Grid headers — sticky column/row headers
-   -------------------------------------------------------------------------- */
+/* ==========================================================================
+   3. Grid Headers
+   ========================================================================== */
 
 .grid-header {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.2;
-  background-color: var(--pico-card-background-color);
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: var(--text-muted);
   user-select: none;
 }
 
@@ -143,9 +139,9 @@
   min-height: var(--col-header-height);
 }
 
-/* --------------------------------------------------------------------------
-   6. Grid cells — chessboard pattern, empty state, hover
-   -------------------------------------------------------------------------- */
+/* ==========================================================================
+   4. Grid Cells
+   ========================================================================== */
 
 .grid-cell {
   display: flex;
@@ -155,259 +151,90 @@
   min-width: var(--cell-min-width);
   min-height: var(--cell-min-height);
   cursor: pointer;
-  transition: opacity 0.2s ease, box-shadow 0.2s ease, filter 0.15s ease;
-}
-
-.cell-light {
-  background-color: var(--cell-light);
-}
-
-.cell-dark {
-  background-color: var(--cell-dark);
-}
-
-.cell-coord {
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.cell-count {
-  font-size: 0.75rem;
-  font-weight: 400;
-  line-height: 1.2;
-  color: var(--pico-muted-color);
-}
-
-.cell-empty {
-  opacity: var(--cell-empty-opacity);
-}
-
-.grid-cell:hover {
-  filter: brightness(1.05);
-}
-
-/* --------------------------------------------------------------------------
-   7. Button reset for grid cells (Pico CSS overrides)
-   -------------------------------------------------------------------------- */
-
-button.grid-cell {
+  border-radius: var(--radius-sm);
   border: none;
   padding: 0;
   margin: 0;
   font: inherit;
   color: inherit;
-  background-color: inherit;
-  border-radius: 0;
-  outline-offset: -2px;
-  box-shadow: none;
   width: 100%;
   text-align: center;
-  --pico-background-color: inherit;
-  --pico-border-color: transparent;
-  --pico-box-shadow: none;
+  position: relative;
+  transition: transform 0.12s, box-shadow 0.12s;
 }
 
-button.grid-cell:hover,
-button.grid-cell:active,
-button.grid-cell:focus {
-  --pico-background-color: inherit;
-  --pico-border-color: transparent;
-  --pico-box-shadow: none;
-  background-color: inherit;
+.cell-light { background-color: var(--cell-light); }
+.cell-dark { background-color: var(--cell-dark); }
+
+/* Occupied cell — accent bar */
+.grid-cell:not(.cell-empty)::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 20%; bottom: 20%;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+.grid-cell:not(.cell-empty):hover::before { opacity: 0.8; }
+
+.cell-coord {
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  line-height: 1.2;
 }
 
-button.grid-cell.cell-light {
-  background-color: var(--cell-light);
+.cell-count {
+  font-size: 0.65rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+  margin-top: 1px;
 }
 
-button.grid-cell.cell-dark {
-  background-color: var(--cell-dark);
+.grid-cell:not(.cell-empty) .cell-count {
+  color: var(--accent);
+  font-weight: 600;
 }
 
-/* --------------------------------------------------------------------------
-   8. Search highlight states
-   -------------------------------------------------------------------------- */
+.cell-empty { opacity: var(--cell-empty-opacity); }
 
-.grid-container.search-active .grid-cell {
-  opacity: 0.4;
+/* Hover lift */
+.grid-cell:hover {
+  transform: scale(1.03);
+  box-shadow: var(--shadow-sm);
+  z-index: 1;
+}
+.grid-cell:not(.cell-empty):hover {
+  box-shadow: 0 2px 12px var(--accent-glow);
 }
 
+/* Active (panel open) */
+.grid-cell.cell-active {
+  box-shadow: 0 0 0 2px var(--accent), 0 2px 12px var(--accent-glow);
+  transform: scale(1.04);
+  z-index: 2;
+}
+
+/* Search highlight */
+.grid-container.search-active .grid-cell { opacity: 0.3; transform: none; }
 .grid-container.search-active .grid-cell.highlight {
   opacity: 1;
-  box-shadow: 0 0 0 3px var(--pico-primary);
+  box-shadow: 0 0 0 2px var(--accent), 0 2px 12px var(--accent-glow);
+  transform: scale(1.04);
 }
+.grid-container.search-active .grid-cell.highlight.cell-empty { opacity: 1; }
 
-.grid-container.search-active .grid-cell.highlight.cell-empty {
-  opacity: 1;
-}
-
-/* --------------------------------------------------------------------------
-   8. Search dropdown fade-in animation
-   -------------------------------------------------------------------------- */
-
-.search-dropdown {
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.search-dropdown.visible {
-  opacity: 1;
-}
-
-/* --------------------------------------------------------------------------
-   10. Expanded Cell State — inline card that pushes neighbors
-   -------------------------------------------------------------------------- */
-
-.grid-cell.expanded {
-  grid-column: span 3;
-  grid-row: span 3;
-  min-height: 200px;
-  max-height: 320px;
-  overflow-y: auto;
-  padding: 16px;
-  text-align: left;
-  z-index: 10;
-  position: relative;
-  background-color: var(--pico-card-background-color);
-  border: 1px solid var(--pico-muted-border-color);
-  border-radius: var(--pico-border-radius);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transition: all 200ms ease-out;
-  cursor: default;
-  opacity: 1 !important;
-}
-
-/* Override chessboard colors when expanded */
-.grid-cell.expanded.cell-light,
-.grid-cell.expanded.cell-dark {
-  background-color: var(--pico-card-background-color);
-}
-
-/* Close button inside expanded cell */
-.expanded-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: none;
-  border: none;
-  font-size: 1.25rem;
-  cursor: pointer;
-  padding: 4px 8px;
-  line-height: 1;
-  color: var(--pico-muted-color);
-  z-index: 11;
-}
-.expanded-close:hover {
-  color: var(--pico-color);
-}
-
-/* Expanded cell header (coord label) */
-.expanded-header {
-  font-size: 1.25rem;
-  font-weight: 700;
-  line-height: 1.2;
-  margin-bottom: 12px;
-}
-
-/* Item list inside expanded cell */
-.expanded-items {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-.expanded-items li {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--pico-muted-border-color);
-}
-.expanded-items li:last-child {
-  border-bottom: none;
-}
-
-/* Item row layout */
-.item-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.item-name {
-  font-weight: 400;
-  font-size: 1rem;
-}
-.item-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-.item-actions button {
-  padding: 4px 8px;
-  font-size: 0.8rem;
-  min-height: 0;
-  min-width: 44px;
-}
-
-/* "No items" empty state and "Add item" button */
-.expanded-empty {
-  color: var(--pico-muted-color);
-  margin-bottom: 12px;
-}
-
-/* --------------------------------------------------------------------------
-   11. Tag Chips
-   -------------------------------------------------------------------------- */
-
-/* Tag chip: <kbd> with remove button */
-.tag-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  font-size: 0.75rem;
-  line-height: 1.2;
-  border-radius: var(--pico-border-radius);
-  background-color: var(--pico-primary-focus);
-  margin: 0 4px 4px 0;
-}
-.tag-chip button {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font-size: 0.75rem;
-  line-height: 1;
-  opacity: 0.7;
-  min-height: 0;
-  min-width: 0;
-}
-.tag-chip button:hover {
-  opacity: 1;
-}
-.tag-chips-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0;
-  margin-bottom: 8px;
-}
-
-/* Tag validation message */
-.tag-hint {
-  font-size: 0.75rem;
-  color: var(--pico-del-color, hsl(0, 70%, 45%));
-  margin-top: 4px;
-}
-
-/* --------------------------------------------------------------------------
-   12. Success Pulse Animation
-   -------------------------------------------------------------------------- */
-
+/* Success pulse */
 @keyframes success-pulse {
-  0% { background-color: hsl(120, 40%, 85%); }
+  0% { background-color: hsl(145, 40%, 85%); }
   100% { background-color: inherit; }
 }
 @media (prefers-color-scheme: dark) {
   @keyframes success-pulse {
-    0% { background-color: hsl(120, 30%, 25%); }
+    0% { background-color: hsl(145, 30%, 22%); }
     100% { background-color: inherit; }
   }
 }
@@ -415,43 +242,269 @@ button.grid-cell.cell-dark {
   animation: success-pulse 500ms ease-out forwards;
 }
 
-/* --------------------------------------------------------------------------
-   13. Inline form styles inside expanded cell
-   -------------------------------------------------------------------------- */
+/* ==========================================================================
+   5. Expanded Panel
+   ========================================================================== */
 
-/* Form inside expanded cell */
-.expanded-form label {
-  font-size: 0.875rem;
-  margin-bottom: 4px;
+.expanded-panel {
+  position: fixed;
+  width: 300px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 0;
+  text-align: left;
+  z-index: 100;
+  font-size: 13px;
+  line-height: 1.4;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  cursor: default;
 }
-.expanded-form input,
-.expanded-form textarea {
-  margin-bottom: 8px;
-  font-size: 0.875rem;
+
+/* --- Panel header --- */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
 }
-.expanded-form textarea {
-  min-height: 60px;
-  resize: vertical;
+
+.panel-coord {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
 }
+
+.panel-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+.expanded-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, color 0.15s;
+}
+.expanded-close:hover {
+  background: var(--bg-inset);
+  color: var(--text);
+}
+
+/* --- Panel body --- */
+.panel-body {
+  padding: var(--space-sm) 14px 14px;
+}
+
+/* ==========================================================================
+   6. Item List
+   ========================================================================== */
+
+.expanded-items {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Item card */
+.item-card {
+  position: relative;
+  padding: 8px 10px;
+  background: var(--bg-inset);
+  border-radius: var(--radius-md);
+  transition: background 0.15s;
+}
+.item-card:hover {
+  background: var(--border);
+}
+
+.item-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.item-name {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hover-reveal action icons */
+.item-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.item-card:hover .item-actions { opacity: 1; }
+
+.item-actions button {
+  background: none;
+  border: none;
+  padding: 2px 5px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  min-height: 0;
+  min-width: 0;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.item-actions button:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+/* Tags row */
+.item-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+/* "+ Add item" dashed button */
+.add-item-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 7px;
+  margin-top: 6px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.add-item-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Empty state */
+.expanded-empty {
+  text-align: center;
+  padding: var(--space-md) var(--space-sm) var(--space-sm);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.expanded-empty strong {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+/* ==========================================================================
+   7. Tag Chips
+   ========================================================================== */
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  border-radius: 9px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-family: inherit;
+  border: none;
+}
+
+.tag-chip button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.5;
+  min-height: 0;
+  min-width: 0;
+  color: inherit;
+  transition: opacity 0.15s;
+}
+.tag-chip button:hover { opacity: 1; }
+
+.tag-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.tag-hint {
+  font-size: 11px;
+  color: var(--danger);
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   8. Panel Form Overrides
+   ========================================================================== */
+
+.expanded-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .expanded-form .form-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.expanded-form .form-actions button {
-  min-height: 0;
-  padding: 6px 12px;
-  font-size: 0.875rem;
-}
-.expanded-form .form-error {
-  font-size: 0.75rem;
-  color: var(--pico-del-color, hsl(0, 70%, 45%));
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: var(--space-sm);
 }
 
-/* Delete confirmation state */
+.expanded-form .form-actions button {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
+.expanded-form .form-error {
+  font-size: 11px;
+  color: var(--danger);
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   9. Delete Confirmation
+   ========================================================================== */
+
 .btn-confirm {
-  background-color: var(--pico-del-color, hsl(0, 70%, 45%)) !important;
-  color: white !important;
-  border-color: var(--pico-del-color, hsl(0, 70%, 45%)) !important;
+  background-color: var(--danger) !important;
+  color: #fff !important;
+  border-color: var(--danger) !important;
+}
+
+.item-actions .btn-confirm {
+  opacity: 1 !important;
+  font-size: 11px;
+  padding: 2px 6px;
 }
