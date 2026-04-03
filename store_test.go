@@ -877,6 +877,255 @@ func TestListTagsWithPrefix(t *testing.T) {
 	}
 }
 
+// --- Search tests ---
+
+// getContainerIDByPos returns the container ID for a given col,row position.
+func getContainerIDByPos(t *testing.T, store *Store, col, row int) int64 {
+	t.Helper()
+	var id int64
+	err := store.db.QueryRow("SELECT id FROM container WHERE col = ? AND row = ?", col, row).Scan(&id)
+	if err != nil {
+		t.Fatalf("get container at (%d,%d): %v", col, row, err)
+	}
+	return id
+}
+
+func TestSearchItemsByName(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getContainerIDByPos(t, store, 1, 1)
+
+	_, err := store.CreateItem(ctx, containerID, "sprezynowa", nil, []string{"washer"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	results, err := store.SearchItems(ctx, "sprez")
+	if err != nil {
+		t.Fatalf("SearchItems: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Name != "sprezynowa" {
+		t.Errorf("Name = %q, want %q", results[0].Name, "sprezynowa")
+	}
+	if results[0].ContainerLabel == "" {
+		t.Error("ContainerLabel is empty")
+	}
+}
+
+func TestSearchItemsByTag(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getContainerIDByPos(t, store, 1, 1)
+
+	_, err := store.CreateItem(ctx, containerID, "Bolt DIN 933", nil, []string{"m6"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	results, err := store.SearchItems(ctx, "m6")
+	if err != nil {
+		t.Fatalf("SearchItems: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Name != "Bolt DIN 933" {
+		t.Errorf("Name = %q, want %q", results[0].Name, "Bolt DIN 933")
+	}
+}
+
+func TestSearchTagExactMatch(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getContainerIDByPos(t, store, 1, 1)
+
+	// Use names that do NOT contain "m6" to isolate tag matching
+	_, err := store.CreateItem(ctx, containerID, "Small bolt", nil, []string{"m6"})
+	if err != nil {
+		t.Fatalf("CreateItem m6: %v", err)
+	}
+	_, err = store.CreateItem(ctx, containerID, "Large bolt", nil, []string{"m60"})
+	if err != nil {
+		t.Fatalf("CreateItem m60: %v", err)
+	}
+
+	results, err := store.SearchItems(ctx, "m6")
+	if err != nil {
+		t.Fatalf("SearchItems: %v", err)
+	}
+	// Only "Small bolt" should match (tag "m6" exact match).
+	// "Large bolt" has tag "m60" which is NOT an exact match for "m6".
+	// Neither name contains "m6".
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Name != "Small bolt" {
+		t.Errorf("Name = %q, want %q", results[0].Name, "Small bolt")
+	}
+}
+
+func TestSearchItemsCaseInsensitive(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getContainerIDByPos(t, store, 1, 1)
+
+	_, err := store.CreateItem(ctx, containerID, "PODKLADKA", nil, []string{"washer"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	results, err := store.SearchItems(ctx, "podkladka")
+	if err != nil {
+		t.Fatalf("SearchItems: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Name != "PODKLADKA" {
+		t.Errorf("Name = %q, want %q", results[0].Name, "PODKLADKA")
+	}
+}
+
+func TestSearchItemsPartialName(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getContainerIDByPos(t, store, 1, 1)
+
+	_, err := store.CreateItem(ctx, containerID, "sprezynowa", nil, []string{"washer"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	// Prefix match
+	results, err := store.SearchItems(ctx, "sprez")
+	if err != nil {
+		t.Fatalf("SearchItems prefix: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("prefix: len(results) = %d, want 1", len(results))
+	}
+
+	// Suffix match
+	results, err = store.SearchItems(ctx, "zynowa")
+	if err != nil {
+		t.Fatalf("SearchItems suffix: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("suffix: len(results) = %d, want 1", len(results))
+	}
+}
+
+func TestSearchItemsDedup(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getContainerIDByPos(t, store, 1, 1)
+
+	// Item name contains "m6" AND has tag "m6" -- should appear only once
+	_, err := store.CreateItem(ctx, containerID, "m6 bolt", nil, []string{"m6"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	results, err := store.SearchItems(ctx, "m6")
+	if err != nil {
+		t.Fatalf("SearchItems: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1 (dedup failed)", len(results))
+	}
+}
+
+func TestSearchItemsSorted(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	// Create items in containers at different positions
+	// Position 3A = col 3, row 1
+	c3A := getContainerIDByPos(t, store, 3, 1)
+	_, err := store.CreateItem(ctx, c3A, "sorttest alpha", nil, []string{"sorttest"})
+	if err != nil {
+		t.Fatalf("CreateItem 3A: %v", err)
+	}
+
+	// Position 1B = col 1, row 2
+	c1B := getContainerIDByPos(t, store, 1, 2)
+	_, err = store.CreateItem(ctx, c1B, "sorttest beta", nil, []string{"sorttest"})
+	if err != nil {
+		t.Fatalf("CreateItem 1B: %v", err)
+	}
+
+	// Position 2A = col 2, row 1
+	c2A := getContainerIDByPos(t, store, 2, 1)
+	_, err = store.CreateItem(ctx, c2A, "sorttest gamma", nil, []string{"sorttest"})
+	if err != nil {
+		t.Fatalf("CreateItem 2A: %v", err)
+	}
+
+	results, err := store.SearchItems(ctx, "sorttest")
+	if err != nil {
+		t.Fatalf("SearchItems: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("len(results) = %d, want 3", len(results))
+	}
+
+	// Expected order: col ASC, row ASC -> 1B, 2A, 3A
+	if results[0].ContainerLabel != "1B" {
+		t.Errorf("results[0].ContainerLabel = %q, want %q", results[0].ContainerLabel, "1B")
+	}
+	if results[1].ContainerLabel != "2A" {
+		t.Errorf("results[1].ContainerLabel = %q, want %q", results[1].ContainerLabel, "2A")
+	}
+	if results[2].ContainerLabel != "3A" {
+		t.Errorf("results[2].ContainerLabel = %q, want %q", results[2].ContainerLabel, "3A")
+	}
+}
+
+func TestSearchItemsEmpty(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	results, err := store.SearchItems(ctx, "")
+	if err != nil {
+		t.Fatalf("SearchItems: %v", err)
+	}
+	if results == nil {
+		t.Fatal("results is nil, want empty slice")
+	}
+	if len(results) != 0 {
+		t.Errorf("len(results) = %d, want 0", len(results))
+	}
+}
+
+func TestSearchItemsWildcardEscape(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getContainerIDByPos(t, store, 1, 1)
+
+	_, err := store.CreateItem(ctx, containerID, "100% bolt", nil, []string{"special"})
+	if err != nil {
+		t.Fatalf("CreateItem 100%%: %v", err)
+	}
+	_, err = store.CreateItem(ctx, containerID, "200 nut", nil, []string{"other"})
+	if err != nil {
+		t.Fatalf("CreateItem 200: %v", err)
+	}
+
+	results, err := store.SearchItems(ctx, "100%")
+	if err != nil {
+		t.Fatalf("SearchItems: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Name != "100% bolt" {
+		t.Errorf("Name = %q, want %q", results[0].Name, "100% bolt")
+	}
+}
+
 func TestTagsInJunctionTable(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
