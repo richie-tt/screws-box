@@ -102,7 +102,10 @@ Plans:
   3. Clicking a container that already has items offers an option to edit or delete each item
   4. Editing an item pre-fills the form with the current name and tags; saving updates the display
   5. Deleting an item removes it from the container; the cell count updates immediately
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 06-01-PLAN.md — Remove dialog HTML, switch Polish to English, add expanded-cell/tag-chip/pulse CSS
+- [ ] 06-02-PLAN.md — Complete grid.js rewrite for inline cell expansion CRUD with browser verification
 **UI hint**: yes
 
 ### Phase 7: Tag Autocomplete
@@ -161,7 +164,7 @@ Plans:
 | 3. Grid UI Design | 1/1 | Complete   | 2026-04-02 |
 | 4. Grid Rendering | 0/1 | Planning complete | - |
 | 5. Item CRUD Backend | 2/2 | Complete   | 2026-04-03 |
-| 6. Item CRUD Frontend | 1/2 | In Progress|  |
+| 6. Item CRUD Frontend | 0/2 | In Progress|  |
 | 7. Tag Autocomplete | 0/? | Not started | - |
 | 8. Search Backend | 0/? | Not started | - |
 | 9. Search Frontend | 0/? | Not started | - |
@@ -169,4 +172,4 @@ Plans:
 
 ---
 *Roadmap created: 2026-04-02*
-*Last updated: 2026-04-02 after Phase 4 planning*
+*Last updated: 2026-04-03 after Phase 6 replanning*
