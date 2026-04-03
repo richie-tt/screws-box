@@ -285,6 +285,7 @@
     var debounceTimer = null;
 
     function clearDropdown() {
+      dropdown.classList.remove('visible');
       dropdown.innerHTML = '';
       suggestions = [];
       activeIndex = -1;
@@ -305,6 +306,9 @@
         });
         dropdown.appendChild(li);
       });
+      // Trigger animation: force reflow then add visible class
+      void dropdown.offsetHeight;
+      dropdown.classList.add('visible');
     }
 
     function updateActive() {
