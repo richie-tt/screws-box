@@ -146,9 +146,9 @@ Plans:
   3. Containers matching the search are visually highlighted on the grid; all other containers are visually de-emphasized
   4. Clearing the search field removes all highlights and the results list
   5. The user can navigate through results with keyboard arrow keys and press Enter/Space to focus the corresponding grid cell
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 09-01-PLAN.md — Template ARIA combobox markup + search result CSS styles
+- [x] 09-01-PLAN.md — Template ARIA combobox markup + search result CSS styles
 - [ ] 09-02-PLAN.md — Search JS logic (debounce, fetch, results, highlights, keyboard nav) + browser verify
 **UI hint**: yes
 
@@ -174,7 +174,7 @@ Plans:
 | 6. Item CRUD Frontend | 0/2 | In Progress|  |
 | 7. Tag Autocomplete | 1/1 | Complete   | 2026-04-03 |
 | 8. Search Backend | 0/1 | Planning complete | - |
-| 9. Search Frontend | 0/2 | Planning complete | - |
+| 9. Search Frontend | 1/2 | In Progress|  |
 | 10. Resilience | 0/? | Not started | - |
 
 ---

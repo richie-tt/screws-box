@@ -27,8 +27,8 @@
 - [ ] **SRCH-01**: User can search by typing in search field — results appear as-you-type
 - [ ] **SRCH-02**: Search matches item names and tags
 - [ ] **SRCH-03**: Search is case-insensitive and supports partial matching ("m6" finds "M6", "spręż" finds "sprężynowa")
-- [ ] **SRCH-04**: Results display as list with item name, tags, and container position (e.g., "3B")
-- [ ] **SRCH-05**: Matching containers are visually highlighted on the grid
+- [x] **SRCH-04**: Results display as list with item name, tags, and container position (e.g., "3B")
+- [x] **SRCH-05**: Matching containers are visually highlighted on the grid
 - [ ] **SRCH-06**: Keyboard navigation through search results
 
 ### Infrastructure
@@ -80,8 +80,8 @@
 | SRCH-01 | Phase 9 | Pending |
 | SRCH-02 | Phase 8 | Pending |
 | SRCH-03 | Phase 8 | Pending |
-| SRCH-04 | Phase 9 | Pending |
-| SRCH-05 | Phase 9 | Pending |
+| SRCH-04 | Phase 9 | Complete |
+| SRCH-05 | Phase 9 | Complete |
 | SRCH-06 | Phase 9 | Pending |
 | INFR-01 | Phase 2 | Complete |
 | INFR-02 | Phase 1 | Complete |
