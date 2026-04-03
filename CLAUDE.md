@@ -30,7 +30,7 @@ Aplikacja webowa do zarządzania organizerem na drobne elementy złączne (śrub
 | Component | Choice | Version | Confidence | Rationale |
 |-----------|--------|---------|-----------|-----------|
 | Interactivity | htmx | 2.x | MEDIUM | Search-as-you-type via HTML attributes, no JS build step, ~14KB. Server-rendered HTML fragments. |
-| CSS Framework | Pico CSS | 2.x | MEDIUM | Classless CSS, semantic HTML looks good automatically. Custom CSS Grid for chessboard. |
+| CSS Framework | Custom (app.css) | - | HIGH | Custom design system with DM Sans/DM Mono fonts, design tokens, light/dark mode. Pico CSS was REMOVED in Phase 6 — do NOT use or reference Pico CSS. |
 | Custom JS | Vanilla JS | - | HIGH | Minimal JS for grid interactions where htmx isn't sufficient |
 ### Infrastructure
 | Component | Choice | Rationale |
@@ -46,12 +46,12 @@ Aplikacja webowa do zarządzania organizerem na drobne elementy złączne (śrub
 | Gin / Echo / Fiber | Heavier than needed, chi is lighter and stdlib-compatible |
 | templ | Pre-stable (v0.3), adds build complexity for ~5 templates |
 | React / Vue / Svelte | SPA is overkill, server-rendered HTML + htmx is simpler |
-| Tailwind CSS | Requires build step, Pico CSS is classless and sufficient |
+| Tailwind CSS | Requires build step, custom app.css is sufficient |
+| Pico CSS | REMOVED in Phase 6 — caused specificity wars with custom styles. Do not re-introduce. |
 | GORM / ent | ORM adds abstraction over simple SQLite queries |
 ## Search Strategy
 ## Open Questions
 - Exact htmx 2.x version — verify at build time from htmx.org
-- Exact Pico CSS 2.x version — verify at build time from picocss.com
 - FTS5 behavior with modernc.org/sqlite — needs quick validation spike (high confidence it works, worth confirming)
 ## Roadmap Implications
 - **Phase 1:** Project skeleton — Go module, chi router, modernc/sqlite, embedded templates, static assets
@@ -63,13 +63,27 @@ Aplikacja webowa do zarządzania organizerem na drobne elementy złączne (śrub
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
-Conventions not yet established. Will populate as patterns emerge during development.
+- **CSS**: Custom design system in `static/css/app.css` (design tokens, reset, typography, forms, buttons) + `static/css/grid.css` (grid-specific). All styles use CSS custom properties from `app.css` (e.g. `var(--accent)`, `var(--bg-raised)`). No CSS framework.
+- **Fonts**: DM Sans (body) + DM Mono (coordinates, headers) loaded from Google Fonts in `layout.html`
+- **Dark mode**: `@media (prefers-color-scheme: dark)` overrides on `:root` tokens — no manual toggle
+- **Frontend JS**: Vanilla JS in IIFE pattern (`(function() { 'use strict'; ... })();`), no build step
+- **Panel pattern**: Floating `position: fixed` panel appended to `document.body`, not inline grid expansion
+- **Language**: All UI text in English. No Polish strings in templates or JS.
+- **Templates**: Go `html/template` with `layout.html` base + block overrides per page
+- **API**: JSON REST endpoints under `/api/`, handlers in `handlers.go`, store methods in `store.go`
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
 ## Architecture
 
-Architecture not yet mapped. Follow existing patterns found in the codebase.
+- **Single binary**: `go build` produces one executable with all assets embedded via `go:embed`
+- **Dev mode**: `go run -tags dev .` reads files from disk (live reload)
+- **Entry**: `main.go` → `routes.go` (chi router) → handlers
+- **Data flow**: `handlers.go` → `store.go` (SQL) → SQLite via modernc.org/sqlite
+- **Models**: `models.go` — Cell, GridData, Item, Container structs
+- **Templates**: `templates/` — layout.html (base), grid.html (main page)
+- **Static assets**: `static/css/app.css` (design system), `static/css/grid.css` (grid+panel), `static/js/grid.js` (CRUD interactions)
+- **Database**: Single `screws_box.db` file, WAL mode, foreign keys ON
 <!-- GSD:architecture-end -->
 
 <!-- GSD:workflow-start source:GSD defaults -->
