@@ -66,7 +66,8 @@ type Cell struct {
 	Row      int    // 1-based
 	Count    int    // number of items
 	IsEmpty  bool   // true when Count == 0
-	CSSClass string // "cell-light" or "cell-dark"
+	CSSClass    string // "cell-light" or "cell-dark"
+	ContainerID int64  // database container.id, for API calls from JS
 }
 
 // ItemResponse is the API-ready representation of an item.

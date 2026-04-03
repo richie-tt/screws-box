@@ -192,7 +192,7 @@ func (s *Store) GetGridData() (*GridData, error) {
 
 	// Query containers with item counts.
 	rows, err := s.db.Query(`
-		SELECT c.col, c.row, COUNT(i.id) AS item_count
+		SELECT c.id, c.col, c.row, COUNT(i.id) AS item_count
 		FROM container c
 		LEFT JOIN item i ON c.id = i.container_id
 		WHERE c.shelf_id = ?
@@ -203,13 +203,18 @@ func (s *Store) GetGridData() (*GridData, error) {
 	}
 	defer rows.Close()
 
-	counts := make(map[pos]int)
+	type cellInfo struct {
+		containerID int64
+		count       int
+	}
+	cells := make(map[pos]cellInfo)
 	for rows.Next() {
+		var containerID int64
 		var col, row, count int
-		if err := rows.Scan(&col, &row, &count); err != nil {
+		if err := rows.Scan(&containerID, &col, &row, &count); err != nil {
 			return nil, fmt.Errorf("scan container row: %w", err)
 		}
-		counts[pos{row: row, col: col}] = count
+		cells[pos{row: row, col: col}] = cellInfo{containerID: containerID, count: count}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate containers: %w", err)
@@ -229,18 +234,19 @@ func (s *Store) GetGridData() (*GridData, error) {
 			Cells:  make([]Cell, shelf.Cols),
 		}
 		for c := 1; c <= shelf.Cols; c++ {
-			count := counts[pos{row: r, col: c}]
+			info := cells[pos{row: r, col: c}]
 			cssClass := "cell-light"
 			if (c+r)%2 != 0 {
 				cssClass = "cell-dark"
 			}
 			row.Cells[c-1] = Cell{
-				Coord:    labelFor(c, r),
-				Col:      c,
-				Row:      r,
-				Count:    count,
-				IsEmpty:  count == 0,
-				CSSClass: cssClass,
+				Coord:       labelFor(c, r),
+				Col:         c,
+				Row:         r,
+				Count:       info.count,
+				IsEmpty:     info.count == 0,
+				CSSClass:    cssClass,
+				ContainerID: info.containerID,
 			}
 		}
 		grid[r-1] = row
