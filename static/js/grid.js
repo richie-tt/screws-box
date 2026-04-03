@@ -266,6 +266,145 @@
     container.appendChild(addBtn);
   }
 
+  // --- Section 4b: Tag Autocomplete Component ---
+
+  function createAutocomplete(tagInput, onSelect, getExistingTags) {
+    // Wrap tagInput in a relative container
+    var wrapper = document.createElement('div');
+    wrapper.className = 'autocomplete-wrapper';
+    tagInput.parentNode.insertBefore(wrapper, tagInput);
+    wrapper.appendChild(tagInput);
+
+    // Create dropdown list
+    var dropdown = document.createElement('ul');
+    dropdown.className = 'autocomplete-dropdown';
+    wrapper.appendChild(dropdown);
+
+    var activeIndex = -1;
+    var suggestions = [];
+    var debounceTimer = null;
+
+    function clearDropdown() {
+      dropdown.innerHTML = '';
+      suggestions = [];
+      activeIndex = -1;
+    }
+
+    function renderSuggestions(tags) {
+      dropdown.innerHTML = '';
+      suggestions = tags;
+      activeIndex = -1;
+      tags.forEach(function (tag, i) {
+        var li = document.createElement('li');
+        li.textContent = tag;
+        li.addEventListener('mousedown', function (e) {
+          e.preventDefault(); // prevent blur before click registers
+          onSelect(tag);
+          clearDropdown();
+          tagInput.value = '';
+        });
+        dropdown.appendChild(li);
+      });
+    }
+
+    function updateActive() {
+      var items = dropdown.querySelectorAll('li');
+      items.forEach(function (li, i) {
+        if (i === activeIndex) {
+          li.classList.add('active');
+        } else {
+          li.classList.remove('active');
+        }
+      });
+    }
+
+    function fetchSuggestions() {
+      var val = tagInput.value.trim().toLowerCase();
+      if (!val) {
+        clearDropdown();
+        return;
+      }
+      apiCall('/api/tags?q=' + encodeURIComponent(val)).then(function (result) {
+        if (result.ok && Array.isArray(result.data)) {
+          var existing = getExistingTags ? getExistingTags() : [];
+          var filtered = result.data.filter(function (t) {
+            return existing.indexOf(t) === -1;
+          }).slice(0, 5);
+          if (filtered.length > 0) {
+            renderSuggestions(filtered);
+          } else {
+            clearDropdown();
+          }
+        } else {
+          clearDropdown();
+        }
+      });
+    }
+
+    // Input event: debounced fetch
+    function onInput() {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(fetchSuggestions, 200);
+    }
+    tagInput.addEventListener('input', onInput);
+
+    // Keydown: navigation and selection (added before existing handlers)
+    function onKeydown(e) {
+      if (e.key === 'ArrowDown') {
+        if (suggestions.length > 0) {
+          e.preventDefault();
+          activeIndex = (activeIndex + 1) % suggestions.length;
+          updateActive();
+        }
+      } else if (e.key === 'ArrowUp') {
+        if (suggestions.length > 0) {
+          e.preventDefault();
+          activeIndex = activeIndex <= 0 ? suggestions.length - 1 : activeIndex - 1;
+          updateActive();
+        }
+      } else if (e.key === 'Enter') {
+        if (activeIndex >= 0 && suggestions.length > 0) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          onSelect(suggestions[activeIndex]);
+          clearDropdown();
+          tagInput.value = '';
+        }
+        // If activeIndex === -1, do nothing — let existing handler proceed
+      } else if (e.key === 'Escape') {
+        clearDropdown();
+      }
+    }
+    tagInput.addEventListener('keydown', onKeydown, true);
+
+    // Blur: delayed clear (allow click on suggestion)
+    function onBlur() {
+      setTimeout(function () {
+        clearDropdown();
+      }, 150);
+    }
+    tagInput.addEventListener('blur', onBlur);
+
+    // Focus: re-fetch if input has value
+    function onFocus() {
+      if (tagInput.value.trim()) {
+        fetchSuggestions();
+      }
+    }
+    tagInput.addEventListener('focus', onFocus);
+
+    return {
+      destroy: function () {
+        tagInput.removeEventListener('input', onInput);
+        tagInput.removeEventListener('keydown', onKeydown, true);
+        tagInput.removeEventListener('blur', onBlur);
+        tagInput.removeEventListener('focus', onFocus);
+        if (debounceTimer) clearTimeout(debounceTimer);
+        clearDropdown();
+      }
+    };
+  }
+
   // --- Section 5: Add item form ---
 
   function renderAddForm(cell, container, containerId) {
