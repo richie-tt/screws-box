@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 )
 
@@ -361,5 +363,500 @@ func TestCascadeDeleteItemRemovesItemTags(t *testing.T) {
 	store.db.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", itemID).Scan(&linkCount)
 	if linkCount != 0 {
 		t.Errorf("expected 0 item_tag rows after cascade delete, got %d", linkCount)
+	}
+}
+
+// --- Test helpers for item CRUD ---
+
+func getTestContainerID(t *testing.T, store *Store) int64 {
+	t.Helper()
+	var id int64
+	err := store.db.QueryRow("SELECT id FROM container LIMIT 1").Scan(&id)
+	if err != nil {
+		t.Fatalf("get test container: %v", err)
+	}
+	return id
+}
+
+func getSecondContainerID(t *testing.T, store *Store, firstID int64) int64 {
+	t.Helper()
+	var id int64
+	err := store.db.QueryRow("SELECT id FROM container WHERE id != ? LIMIT 1", firstID).Scan(&id)
+	if err != nil {
+		t.Fatalf("get second container: %v", err)
+	}
+	return id
+}
+
+// --- Item CRUD tests ---
+
+func TestCreateItemWithTags(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	desc := "DIN 933"
+	item, err := store.CreateItem(ctx, containerID, "M6 bolt", &desc, []string{"m6", "bolt"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	if item.ID <= 0 {
+		t.Errorf("ID = %d, want > 0", item.ID)
+	}
+	if item.Name != "M6 bolt" {
+		t.Errorf("Name = %q, want %q", item.Name, "M6 bolt")
+	}
+	if item.Description == nil || *item.Description != "DIN 933" {
+		t.Errorf("Description = %v, want ptr to %q", item.Description, "DIN 933")
+	}
+	if len(item.Tags) != 2 {
+		t.Errorf("len(Tags) = %d, want 2", len(item.Tags))
+	}
+	// Tags are sorted alphabetically by GetItem
+	if len(item.Tags) >= 2 {
+		if item.Tags[0] != "bolt" || item.Tags[1] != "m6" {
+			t.Errorf("Tags = %v, want [bolt m6]", item.Tags)
+		}
+	}
+	labelPattern := regexp.MustCompile(`^\d+[A-Z]$`)
+	if !labelPattern.MatchString(item.ContainerLabel) {
+		t.Errorf("ContainerLabel = %q, doesn't match pattern \\d+[A-Z]", item.ContainerLabel)
+	}
+	if item.CreatedAt == "" {
+		t.Error("CreatedAt is empty")
+	}
+	if item.UpdatedAt == "" {
+		t.Error("UpdatedAt is empty")
+	}
+}
+
+func TestCreateItemContainerNotFound(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	_, err := store.CreateItem(ctx, 99999, "Test", nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got := err.Error(); got != "container not found" {
+		t.Errorf("error = %q, want %q", got, "container not found")
+	}
+}
+
+func TestCreateItemDuplicateTagsDeduped(t *testing.T) {
+	// Test the dedup function directly.
+	result := dedup([]string{"m6", "m6", "bolt"})
+	if len(result) != 2 {
+		t.Errorf("dedup len = %d, want 2", len(result))
+	}
+
+	// Test CreateItem with already-deduped tags works.
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	dedupedTags := dedup([]string{"m6", "m6", "bolt"})
+	item, err := store.CreateItem(ctx, containerID, "Dedup test", nil, dedupedTags)
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+	if len(item.Tags) != 2 {
+		t.Errorf("len(Tags) = %d, want 2", len(item.Tags))
+	}
+}
+
+func TestGetItem(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	desc := "test description"
+	created, err := store.CreateItem(ctx, containerID, "Get test", &desc, []string{"alpha", "beta"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	item, err := store.GetItem(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetItem: %v", err)
+	}
+	if item == nil {
+		t.Fatal("GetItem returned nil")
+	}
+	if item.ID != created.ID {
+		t.Errorf("ID = %d, want %d", item.ID, created.ID)
+	}
+	if item.Name != "Get test" {
+		t.Errorf("Name = %q, want %q", item.Name, "Get test")
+	}
+	if item.Description == nil || *item.Description != "test description" {
+		t.Errorf("Description mismatch")
+	}
+	if len(item.Tags) != 2 {
+		t.Errorf("len(Tags) = %d, want 2", len(item.Tags))
+	}
+	if item.ContainerLabel == "" {
+		t.Error("ContainerLabel is empty")
+	}
+}
+
+func TestGetItemNotFound(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	item, err := store.GetItem(ctx, 99999)
+	if err != nil {
+		t.Fatalf("GetItem error: %v", err)
+	}
+	if item != nil {
+		t.Errorf("expected nil, got %+v", item)
+	}
+}
+
+func TestUpdateItem(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	oldDesc := "old desc"
+	created, err := store.CreateItem(ctx, containerID, "old", &oldDesc, []string{"tag1"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	newDesc := "new desc"
+	updated, err := store.UpdateItem(ctx, created.ID, "new", &newDesc, containerID)
+	if err != nil {
+		t.Fatalf("UpdateItem: %v", err)
+	}
+	if updated == nil {
+		t.Fatal("UpdateItem returned nil")
+	}
+	if updated.Name != "new" {
+		t.Errorf("Name = %q, want %q", updated.Name, "new")
+	}
+	if updated.Description == nil || *updated.Description != "new desc" {
+		t.Errorf("Description mismatch")
+	}
+	// Tags unchanged per D-18.
+	if len(updated.Tags) != 1 || updated.Tags[0] != "tag1" {
+		t.Errorf("Tags = %v, want [tag1]", updated.Tags)
+	}
+}
+
+func TestUpdateItemMoveContainer(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	containerA := getTestContainerID(t, store)
+	containerB := getSecondContainerID(t, store, containerA)
+
+	created, err := store.CreateItem(ctx, containerA, "Movable", nil, nil)
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+	labelA := created.ContainerLabel
+
+	moved, err := store.UpdateItem(ctx, created.ID, "Movable", nil, containerB)
+	if err != nil {
+		t.Fatalf("UpdateItem: %v", err)
+	}
+	if moved.ContainerLabel == labelA {
+		t.Errorf("ContainerLabel unchanged after move: %q", moved.ContainerLabel)
+	}
+}
+
+func TestUpdateItemNotFound(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	item, err := store.UpdateItem(ctx, 99999, "test", nil, containerID)
+	if err != nil {
+		t.Fatalf("UpdateItem error: %v", err)
+	}
+	if item != nil {
+		t.Errorf("expected nil, got %+v", item)
+	}
+}
+
+func TestDeleteItem(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	created, err := store.CreateItem(ctx, containerID, "To delete", nil, []string{"temp"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	if err := store.DeleteItem(ctx, created.ID); err != nil {
+		t.Fatalf("DeleteItem: %v", err)
+	}
+
+	item, err := store.GetItem(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetItem after delete: %v", err)
+	}
+	if item != nil {
+		t.Errorf("expected nil after delete, got %+v", item)
+	}
+}
+
+func TestDeleteItemContainerPersists(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	created, err := store.CreateItem(ctx, containerID, "To delete", nil, nil)
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	if err := store.DeleteItem(ctx, created.ID); err != nil {
+		t.Fatalf("DeleteItem: %v", err)
+	}
+
+	var count int
+	err = store.db.QueryRow("SELECT COUNT(*) FROM container WHERE id = ?", containerID).Scan(&count)
+	if err != nil {
+		t.Fatalf("query container: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("container count = %d, want 1", count)
+	}
+}
+
+func TestDeleteItemNotFound(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	err := store.DeleteItem(ctx, 99999)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got := err.Error(); got != "item not found" {
+		t.Errorf("error = %q, want %q", got, "item not found")
+	}
+}
+
+func TestMultipleItemsPerContainer(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	_, err := store.CreateItem(ctx, containerID, "Item A", nil, nil)
+	if err != nil {
+		t.Fatalf("CreateItem A: %v", err)
+	}
+	_, err = store.CreateItem(ctx, containerID, "Item B", nil, nil)
+	if err != nil {
+		t.Fatalf("CreateItem B: %v", err)
+	}
+
+	result, err := store.ListItemsByContainer(ctx, containerID)
+	if err != nil {
+		t.Fatalf("ListItemsByContainer: %v", err)
+	}
+	if result == nil {
+		t.Fatal("ListItemsByContainer returned nil")
+	}
+	if len(result.Items) != 2 {
+		t.Errorf("len(Items) = %d, want 2", len(result.Items))
+	}
+}
+
+func TestAddTagToItem(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	created, err := store.CreateItem(ctx, containerID, "Tag test", nil, []string{"initial"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	updated, err := store.AddTagToItem(ctx, created.ID, "added")
+	if err != nil {
+		t.Fatalf("AddTagToItem: %v", err)
+	}
+	if len(updated.Tags) != 2 {
+		t.Errorf("len(Tags) = %d, want 2", len(updated.Tags))
+	}
+}
+
+func TestRemoveTagFromItem(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	created, err := store.CreateItem(ctx, containerID, "Remove tag test", nil, []string{"keep", "remove"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	err = store.RemoveTagFromItem(ctx, created.ID, "remove")
+	if err != nil {
+		t.Fatalf("RemoveTagFromItem: %v", err)
+	}
+
+	item, err := store.GetItem(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetItem: %v", err)
+	}
+	if len(item.Tags) != 1 {
+		t.Errorf("len(Tags) = %d, want 1", len(item.Tags))
+	}
+	if item.Tags[0] != "keep" {
+		t.Errorf("Tags[0] = %q, want %q", item.Tags[0], "keep")
+	}
+
+	// Per D-15: tag still exists in tag table.
+	var tagCount int
+	err = store.db.QueryRow("SELECT COUNT(*) FROM tag WHERE name = ?", "remove").Scan(&tagCount)
+	if err != nil {
+		t.Fatalf("query tag: %v", err)
+	}
+	if tagCount != 1 {
+		t.Errorf("tag 'remove' count = %d, want 1 (orphaned tags kept)", tagCount)
+	}
+}
+
+func TestListItemsByContainer(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	_, err := store.CreateItem(ctx, containerID, "List A", nil, []string{"x"})
+	if err != nil {
+		t.Fatalf("CreateItem A: %v", err)
+	}
+	_, err = store.CreateItem(ctx, containerID, "List B", nil, []string{"y"})
+	if err != nil {
+		t.Fatalf("CreateItem B: %v", err)
+	}
+
+	result, err := store.ListItemsByContainer(ctx, containerID)
+	if err != nil {
+		t.Fatalf("ListItemsByContainer: %v", err)
+	}
+	if result == nil {
+		t.Fatal("returned nil")
+	}
+
+	labelPattern := regexp.MustCompile(`^\d+[A-Z]$`)
+	if !labelPattern.MatchString(result.Label) {
+		t.Errorf("Label = %q, doesn't match pattern", result.Label)
+	}
+	if len(result.Items) != 2 {
+		t.Errorf("len(Items) = %d, want 2", len(result.Items))
+	}
+}
+
+func TestListItemsByContainerNotFound(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	result, err := store.ListItemsByContainer(ctx, 99999)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if result != nil {
+		t.Errorf("expected nil, got %+v", result)
+	}
+}
+
+func TestListAllItems(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+
+	containerA := getTestContainerID(t, store)
+	containerB := getSecondContainerID(t, store, containerA)
+
+	_, err := store.CreateItem(ctx, containerA, "All A", nil, nil)
+	if err != nil {
+		t.Fatalf("CreateItem A: %v", err)
+	}
+	_, err = store.CreateItem(ctx, containerB, "All B", nil, nil)
+	if err != nil {
+		t.Fatalf("CreateItem B: %v", err)
+	}
+
+	items, err := store.ListAllItems(ctx)
+	if err != nil {
+		t.Fatalf("ListAllItems: %v", err)
+	}
+	if len(items) != 2 {
+		t.Errorf("len(items) = %d, want 2", len(items))
+	}
+}
+
+func TestListTags(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	_, err := store.CreateItem(ctx, containerID, "Tags test", nil, []string{"alpha", "beta"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	tags, err := store.ListTags(ctx, "")
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	if len(tags) < 2 {
+		t.Errorf("len(tags) = %d, want >= 2", len(tags))
+	}
+	// Verify sorted alphabetically.
+	if len(tags) >= 2 {
+		if tags[0].Name > tags[1].Name {
+			t.Errorf("tags not sorted: %q > %q", tags[0].Name, tags[1].Name)
+		}
+	}
+}
+
+func TestListTagsWithPrefix(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	_, err := store.CreateItem(ctx, containerID, "Prefix test", nil, []string{"m6", "m8", "bolt"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	tags, err := store.ListTags(ctx, "m")
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	if len(tags) != 2 {
+		t.Errorf("len(tags) = %d, want 2", len(tags))
+	}
+	for _, tag := range tags {
+		if tag.Name != "m6" && tag.Name != "m8" {
+			t.Errorf("unexpected tag %q with prefix 'm'", tag.Name)
+		}
+	}
+}
+
+func TestTagsInJunctionTable(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, store)
+
+	item, err := store.CreateItem(ctx, containerID, "Junction test", nil, []string{"tag1", "tag2"})
+	if err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+
+	var count int
+	err = store.db.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", item.ID).Scan(&count)
+	if err != nil {
+		t.Fatalf("query item_tag: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("item_tag count = %d, want 2", count)
 	}
 }
