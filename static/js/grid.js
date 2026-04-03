@@ -176,14 +176,17 @@
 
   // Click-outside handler
   document.addEventListener('click', function (e) {
-    if (expandedPanel && !expandedPanel.contains(e.target)) {
+    if (expandedPanel && !expandedPanel.contains(e.target) && !e.target.closest('.search-bar')) {
       collapseCell();
     }
   });
 
-  // Escape key handler
+  // Escape key handler (search-aware: skips when search is active)
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+      var si = document.getElementById('search-input');
+      var sd = document.getElementById('search-dropdown');
+      if (si && (si === document.activeElement || (sd && sd.classList.contains('visible')))) return;
       collapseCell();
     }
   });
@@ -855,5 +858,430 @@
   function findCell(containerId) {
     return document.querySelector('.grid-cell[data-container-id="' + containerId + '"]');
   }
+
+  // --- Section 9: Search ---
+
+  var searchInput = document.getElementById('search-input');
+  var searchDropdown = document.getElementById('search-dropdown');
+  var searchListbox = document.getElementById('search-results-listbox');
+
+  if (!searchInput || !searchDropdown || !searchListbox) return;
+
+  var dropdownHeader = searchDropdown.querySelector('.search-dropdown-header');
+  var dropdownEmpty = searchDropdown.querySelector('.search-dropdown-empty');
+  var dropdownError = searchDropdown.querySelector('.search-dropdown-error');
+  var clearBtn = document.querySelector('.search-clear-btn');
+  var spinner = document.querySelector('.search-spinner');
+
+  var searchController = null;
+  var debounceTimer = null;
+  var currentResults = [];
+  var focusedIndex = -1;
+  var lastQuery = '';
+
+  // 9b. Helper: highlightMatch
+  function highlightMatch(text, query) {
+    var lower = text.toLowerCase();
+    var idx = lower.indexOf(query.toLowerCase());
+    if (idx === -1) return document.createTextNode(text);
+
+    var frag = document.createDocumentFragment();
+    if (idx > 0) frag.appendChild(document.createTextNode(text.slice(0, idx)));
+    var strong = document.createElement('strong');
+    strong.textContent = text.slice(idx, idx + query.length);
+    frag.appendChild(strong);
+    if (idx + query.length < text.length) {
+      frag.appendChild(document.createTextNode(text.slice(idx + query.length)));
+    }
+    return frag;
+  }
+
+  // 9c. Helper: showDropdown / hideDropdown
+  function showDropdown() {
+    searchDropdown.removeAttribute('hidden');
+    searchDropdown.classList.add('visible');
+    searchInput.setAttribute('aria-expanded', 'true');
+  }
+
+  function hideDropdown() {
+    searchDropdown.setAttribute('hidden', '');
+    searchDropdown.classList.remove('visible');
+    searchInput.setAttribute('aria-expanded', 'false');
+    focusedIndex = -1;
+    searchInput.setAttribute('aria-activedescendant', '');
+  }
+
+  // 9d. Helper: showSpinner / hideSpinner
+  function showSpinner() {
+    if (spinner) spinner.removeAttribute('hidden');
+  }
+
+  function hideSpinner() {
+    if (spinner) spinner.setAttribute('hidden', '');
+  }
+
+  // 9e. Helper: updateClearButton
+  function updateClearButton() {
+    if (!clearBtn) return;
+    if (searchInput.value.length > 0) {
+      clearBtn.removeAttribute('hidden');
+    } else {
+      clearBtn.setAttribute('hidden', '');
+    }
+  }
+
+  // 9f. Core: renderResults
+  function renderResults(results, query) {
+    currentResults = results;
+    searchListbox.innerHTML = '';
+
+    if (results.length === 0) {
+      dropdownEmpty.textContent = "No results for '" + query + "' -- try fewer characters or a different tag";
+      dropdownEmpty.removeAttribute('hidden');
+      dropdownHeader.setAttribute('hidden', '');
+      searchListbox.setAttribute('hidden', '');
+      dropdownError.setAttribute('hidden', '');
+      updateGridHighlights([], null);
+      showDropdown();
+      return;
+    }
+
+    dropdownEmpty.setAttribute('hidden', '');
+    dropdownError.setAttribute('hidden', '');
+    dropdownHeader.textContent = results.length + (results.length === 1 ? ' result' : ' results');
+    dropdownHeader.removeAttribute('hidden');
+    searchListbox.removeAttribute('hidden');
+
+    results.forEach(function (result, index) {
+      var li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.setAttribute('id', 'search-result-' + index);
+      li.setAttribute('aria-selected', 'false');
+      li.className = 'search-result';
+
+      // Top row: name + position badge
+      var topDiv = document.createElement('div');
+      topDiv.className = 'search-result-top';
+
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'search-result-name';
+      nameSpan.appendChild(highlightMatch(result.name, query));
+      topDiv.appendChild(nameSpan);
+
+      var badge = document.createElement('span');
+      badge.className = 'position-badge';
+      badge.textContent = result.container_label;
+      topDiv.appendChild(badge);
+
+      li.appendChild(topDiv);
+
+      // Tags row
+      if (result.tags && result.tags.length > 0) {
+        var tagsDiv = document.createElement('div');
+        tagsDiv.className = 'search-result-tags';
+        result.tags.forEach(function (tag) {
+          var chip = document.createElement('span');
+          chip.className = 'tag-chip';
+          if (tag.toLowerCase() === query.toLowerCase()) {
+            var s = document.createElement('strong');
+            s.textContent = tag;
+            chip.appendChild(s);
+          } else {
+            chip.appendChild(highlightMatch(tag, query));
+          }
+          tagsDiv.appendChild(chip);
+        });
+        li.appendChild(tagsDiv);
+      }
+
+      li.addEventListener('click', function (e) {
+        e.stopPropagation();
+        selectResult(index);
+      });
+
+      searchListbox.appendChild(li);
+    });
+
+    showDropdown();
+    focusedIndex = -1;
+    updateGridHighlights(results, null);
+
+    // Auto-scroll grid to first highlighted cell (D-26)
+    if (results.length > 0) {
+      var firstCell = findCell(results[0].container_id);
+      if (firstCell) {
+        firstCell.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }
+
+  // 9g. Core: updateGridHighlights
+  function updateGridHighlights(results, focusedContainerId) {
+    var matchCounts = {};
+    results.forEach(function (item) {
+      matchCounts[item.container_id] = (matchCounts[item.container_id] || 0) + 1;
+    });
+
+    var hasResults = Object.keys(matchCounts).length > 0;
+    gridContainer.classList.toggle('search-active', hasResults);
+
+    var cells = document.querySelectorAll('.grid-cell');
+    cells.forEach(function (cell) {
+      var cid = parseInt(cell.dataset.containerId, 10);
+      var count = matchCounts[cid] || 0;
+
+      cell.classList.toggle('highlight', count > 0);
+      cell.classList.toggle('highlight-focus', cid === focusedContainerId);
+
+      // Match count badge (D-22)
+      var badge = cell.querySelector('.match-count');
+      if (count > 1) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'match-count';
+          cell.appendChild(badge);
+        }
+        badge.textContent = count;
+      } else if (badge) {
+        badge.remove();
+      }
+    });
+  }
+
+  // 9h. Core: clearSearch
+  function clearSearch() {
+    searchInput.value = '';
+    hideDropdown();
+
+    // Clear all grid highlights
+    gridContainer.classList.remove('search-active');
+    var cells = document.querySelectorAll('.grid-cell');
+    cells.forEach(function (cell) {
+      cell.classList.remove('highlight');
+      cell.classList.remove('highlight-focus');
+      var badge = cell.querySelector('.match-count');
+      if (badge) badge.remove();
+    });
+
+    currentResults = [];
+    focusedIndex = -1;
+    lastQuery = '';
+
+    updateClearButton();
+
+    if (searchController) {
+      searchController.abort();
+      searchController = null;
+    }
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+  }
+
+  // 9i. Core: performSearch
+  function performSearch(query) {
+    if (searchController) searchController.abort();
+    searchController = new AbortController();
+
+    showSpinner();
+
+    fetch('/api/search?q=' + encodeURIComponent(query), { signal: searchController.signal })
+      .then(function (resp) { return resp.json(); })
+      .then(function (data) {
+        hideSpinner();
+        searchController = null;
+
+        // Race condition guard (Pitfall 1): check input still matches
+        if (searchInput.value.trim() !== query) return;
+
+        renderResults(data.results || [], query);
+        lastQuery = query;
+      })
+      .catch(function (err) {
+        if (err.name === 'AbortError') return;
+        hideSpinner();
+        searchController = null;
+
+        // Show error state (D-13)
+        dropdownHeader.setAttribute('hidden', '');
+        searchListbox.setAttribute('hidden', '');
+        dropdownEmpty.setAttribute('hidden', '');
+        dropdownError.textContent = 'Search failed -- check your connection and try again';
+        dropdownError.removeAttribute('hidden');
+        showDropdown();
+
+        // Clear grid highlights on error
+        updateGridHighlights([], null);
+      });
+  }
+
+  // 9j. Core: selectResult
+  function selectResult(index) {
+    var result = currentResults[index];
+    if (!result) return;
+
+    hideDropdown();
+
+    var cell = findCell(result.container_id);
+    if (cell) {
+      cell.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      expandCell(cell);
+      pulseCell(cell);
+    }
+  }
+
+  // 9k. Event: searchInput 'input' handler
+  searchInput.addEventListener('input', function () {
+    updateClearButton();
+
+    if (debounceTimer) clearTimeout(debounceTimer);
+
+    var query = searchInput.value.trim();
+
+    if (query.length < 2) {
+      hideDropdown();
+      hideSpinner();
+      // Clear grid highlights
+      gridContainer.classList.remove('search-active');
+      var cells = document.querySelectorAll('.grid-cell');
+      cells.forEach(function (cell) {
+        cell.classList.remove('highlight');
+        cell.classList.remove('highlight-focus');
+        var badge = cell.querySelector('.match-count');
+        if (badge) badge.remove();
+      });
+      // Abort any in-flight request
+      if (searchController) {
+        searchController.abort();
+        searchController = null;
+      }
+      return;
+    }
+
+    // Close any open panel before entering search mode (D-24)
+    if (expandedPanel) collapseCell();
+
+    showSpinner();
+    debounceTimer = setTimeout(function () {
+      performSearch(query);
+    }, 200);
+  });
+
+  // 9l. Event: searchInput 'keydown' handler
+  searchInput.addEventListener('keydown', function (e) {
+    var dropdownVisible = searchDropdown.classList.contains('visible');
+
+    if (e.key === 'ArrowDown') {
+      if (dropdownVisible && currentResults.length > 0) {
+        e.preventDefault();
+        if (focusedIndex < currentResults.length - 1) {
+          focusedIndex++;
+        } else {
+          focusedIndex = 0;
+        }
+        updateFocusedResult();
+      }
+    } else if (e.key === 'ArrowUp') {
+      if (dropdownVisible && focusedIndex >= 0) {
+        e.preventDefault();
+        if (focusedIndex > 0) {
+          focusedIndex--;
+        } else {
+          focusedIndex = -1;
+        }
+        updateFocusedResult();
+      }
+    } else if (e.key === 'Enter') {
+      if (focusedIndex >= 0) {
+        e.preventDefault();
+        selectResult(focusedIndex);
+      }
+    } else if (e.key === 'Escape') {
+      if (focusedIndex >= 0) {
+        // Layer 1: return focus from results to input
+        focusedIndex = -1;
+        updateFocusedResult();
+        searchInput.focus();
+        e.preventDefault();
+        e.stopPropagation();
+      } else if (dropdownVisible) {
+        // Layer 2: close dropdown and clear highlights
+        hideDropdown();
+        gridContainer.classList.remove('search-active');
+        var cells = document.querySelectorAll('.grid-cell');
+        cells.forEach(function (cell) {
+          cell.classList.remove('highlight');
+          cell.classList.remove('highlight-focus');
+          var badge = cell.querySelector('.match-count');
+          if (badge) badge.remove();
+        });
+        e.preventDefault();
+        e.stopPropagation();
+      } else if (searchInput.value.length > 0) {
+        // Layer 3: clear search text entirely
+        clearSearch();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    } else if (e.key === 'Home') {
+      if (focusedIndex >= 0) {
+        e.preventDefault();
+        focusedIndex = 0;
+        updateFocusedResult();
+      }
+    } else if (e.key === 'End') {
+      if (focusedIndex >= 0) {
+        e.preventDefault();
+        focusedIndex = currentResults.length - 1;
+        updateFocusedResult();
+      }
+    }
+  });
+
+  // 9m. Helper: updateFocusedResult
+  function updateFocusedResult() {
+    var items = searchListbox.querySelectorAll('li[role="option"]');
+    items.forEach(function (li, i) {
+      li.setAttribute('aria-selected', i === focusedIndex ? 'true' : 'false');
+    });
+
+    searchInput.setAttribute('aria-activedescendant', focusedIndex >= 0 ? 'search-result-' + focusedIndex : '');
+
+    if (focusedIndex >= 0 && items[focusedIndex]) {
+      items[focusedIndex].scrollIntoView({ block: 'nearest' });
+    }
+
+    // Update grid highlight-focus (D-25)
+    updateGridHighlights(currentResults, focusedIndex >= 0 ? currentResults[focusedIndex].container_id : null);
+  }
+
+  // 9n. Event: clearBtn 'click' handler
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      clearSearch();
+      searchInput.focus();
+    });
+  }
+
+  // 9o. Event: document 'keydown' for / shortcut (D-18)
+  document.addEventListener('keydown', function (e) {
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      var tag = document.activeElement.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (document.activeElement.isContentEditable) return;
+      e.preventDefault();
+      searchInput.focus();
+    }
+  });
+
+  // 9p. Event: click outside search area to close dropdown (keep highlights per D-27)
+  document.addEventListener('click', function (e) {
+    if (searchDropdown.classList.contains('visible') && !e.target.closest('.search-sidebar')) {
+      hideDropdown();
+    }
+  });
 
 })();

@@ -10,42 +10,48 @@
   <p>Check server logs.</p>
 </article>
 {{else}}
-<div class="search-bar" style="position: relative;">
-  <input type="search" id="search-input" placeholder="Search items..." aria-label="Search items"
-         role="combobox" aria-expanded="false" aria-autocomplete="list"
-         aria-controls="search-results-listbox" aria-activedescendant="" autocomplete="off">
-  <span class="search-spinner" hidden></span>
-  <button type="button" class="search-clear-btn" aria-label="Clear search" hidden>&times;</button>
-  <div class="search-dropdown" id="search-dropdown" hidden>
-    <div class="search-dropdown-header"></div>
-    <ul id="search-results-listbox" role="listbox" aria-label="Search results"></ul>
-    <div class="search-dropdown-empty" hidden></div>
-    <div class="search-dropdown-error" hidden></div>
-  </div>
-</div>
-
-<div class="grid-wrapper">
-  <div class="grid-container" style="--grid-cols: {{.Cols}}">
-    <!-- Corner cell -->
-    <div class="grid-header grid-corner"></div>
-    <!-- Column headers -->
-    {{range .ColNumbers}}
-    <div class="grid-header col-header">{{.}}</div>
-    {{end}}
-    <!-- Grid rows -->
-    {{range .Grid}}
-    <div class="grid-header row-header">{{.Letter}}</div>
-    {{range .Cells}}
-    <button class="grid-cell {{.CSSClass}}{{if .IsEmpty}} cell-empty{{end}}"
-            data-coord="{{.Coord}}"
-            data-container-id="{{.ContainerID}}"
-            data-count="{{.Count}}"
-            type="button">
-      <span class="cell-coord">{{.Coord}}</span>
-      <span class="cell-count">{{if .IsEmpty}}&mdash;{{else}}{{if eq .Count 1}}1 item{{else}}{{.Count}} items{{end}}{{end}}</span>
-    </button>
-    {{end}}
-    {{end}}
+<div class="shelf-layout">
+  <aside class="search-sidebar">
+    <div class="search-sidebar-input">
+      <input type="search" id="search-input" placeholder="Search items or tags..." aria-label="Search items"
+             role="combobox" aria-expanded="false" aria-autocomplete="list"
+             aria-controls="search-results-listbox" aria-activedescendant="" autocomplete="off">
+      <span class="search-spinner" hidden></span>
+      <button type="button" class="search-clear-btn" aria-label="Clear search" hidden>&times;</button>
+    </div>
+    <div class="search-sidebar-hint" id="search-hint">
+      <kbd>/</kbd> to focus
+    </div>
+    <div class="search-results-panel" id="search-dropdown" hidden>
+      <div class="search-dropdown-header"></div>
+      <ul id="search-results-listbox" role="listbox" aria-label="Search results" class="search-results-list"></ul>
+      <div class="search-dropdown-empty" hidden></div>
+      <div class="search-dropdown-error" hidden></div>
+    </div>
+  </aside>
+  <div class="grid-wrapper">
+    <div class="grid-container" style="--grid-cols: {{.Cols}}">
+      <!-- Corner cell -->
+      <div class="grid-header grid-corner"></div>
+      <!-- Column headers -->
+      {{range .ColNumbers}}
+      <div class="grid-header col-header">{{.}}</div>
+      {{end}}
+      <!-- Grid rows -->
+      {{range .Grid}}
+      <div class="grid-header row-header">{{.Letter}}</div>
+      {{range .Cells}}
+      <button class="grid-cell {{.CSSClass}}{{if .IsEmpty}} cell-empty{{end}}"
+              data-coord="{{.Coord}}"
+              data-container-id="{{.ContainerID}}"
+              data-count="{{.Count}}"
+              type="button">
+        <span class="cell-coord">{{.Coord}}</span>
+        <span class="cell-count">{{if .IsEmpty}}&mdash;{{else}}{{if eq .Count 1}}1 item{{else}}{{.Count}} items{{end}}{{end}}</span>
+      </button>
+      {{end}}
+      {{end}}
+    </div>
   </div>
 </div>
 {{end}}

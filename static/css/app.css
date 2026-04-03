@@ -114,7 +114,7 @@ body > header {
 }
 
 body > header nav {
-  max-width: 1200px;
+  max-width: 1500px;
   margin: 0 auto;
 }
 
@@ -136,7 +136,7 @@ body > header p {
 
 main {
   flex: 1;
-  max-width: 1200px;
+  max-width: 1500px;
   width: 100%;
   margin: 0 auto;
   padding: var(--space-md) var(--space-lg);
