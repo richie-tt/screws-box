@@ -34,6 +34,7 @@ func newRouter(store *Store) http.Handler {
 		r.Get("/tags", handleListTags(store))
 		r.Get("/search", handleSearch(store))
 		r.Get("/containers/{containerID}/items", handleListContainerItems(store))
+		r.Put("/shelf/resize", handleResizeShelf(store))
 	})
 
 	r.Handle("/static/*", http.StripPrefix("/static/",

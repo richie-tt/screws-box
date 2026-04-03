@@ -712,3 +712,133 @@ func TestErrorResponseFormat(t *testing.T) {
 		t.Error("error message is empty")
 	}
 }
+
+// --- Resize handler tests ---
+
+func TestHandleResizeShelf_Success(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	body := `{"rows":8,"cols":12}`
+	req := httptest.NewRequest("PUT", "/api/shelf/resize", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var result map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if int(result["rows"].(float64)) != 8 {
+		t.Errorf("rows = %v, want 8", result["rows"])
+	}
+	if int(result["cols"].(float64)) != 12 {
+		t.Errorf("cols = %v, want 12", result["cols"])
+	}
+}
+
+func TestHandleResizeShelf_Conflict(t *testing.T) {
+	router, store := setupTestRouter(t)
+
+	// Create item in a high-coordinate container
+	var containerID int64
+	err := store.db.QueryRow("SELECT id FROM container WHERE col = 10 AND row = 5").Scan(&containerID)
+	if err != nil {
+		t.Fatalf("get container: %v", err)
+	}
+	body := fmt.Sprintf(`{"name":"Test Bolt","container_id":%d,"tags":["test"]}`, containerID)
+	req := httptest.NewRequest("POST", "/api/items", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create item: status = %d; body: %s", w.Code, w.Body.String())
+	}
+
+	// Try resize to 3x3 — should conflict because (10,5) is outside bounds
+	body2 := `{"rows":3,"cols":3}`
+	req = httptest.NewRequest("PUT", "/api/shelf/resize", strings.NewReader(body2))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusConflict, w.Body.String())
+	}
+
+	var result map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if result["blocked"] != true {
+		t.Errorf("blocked = %v, want true", result["blocked"])
+	}
+	affected, ok := result["affected"].([]any)
+	if !ok || len(affected) == 0 {
+		t.Fatalf("affected missing or empty: %v", result["affected"])
+	}
+}
+
+func TestHandleResizeShelf_BadRequest_InvalidJSON(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest("PUT", "/api/shelf/resize", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+}
+
+func TestValidateResize_TooSmall(t *testing.T) {
+	req := &ResizeRequest{Rows: 0, Cols: 5}
+	msg := validateResizeRequest(req)
+	if msg != "rows must be between 1 and 26" {
+		t.Errorf("msg = %q, want rows validation error", msg)
+	}
+}
+
+func TestValidateResize_TooLarge(t *testing.T) {
+	req := &ResizeRequest{Rows: 5, Cols: 31}
+	msg := validateResizeRequest(req)
+	if msg != "cols must be between 1 and 30" {
+		t.Errorf("msg = %q, want cols validation error", msg)
+	}
+}
+
+func TestValidateResize_Valid(t *testing.T) {
+	req := &ResizeRequest{Rows: 5, Cols: 10}
+	msg := validateResizeRequest(req)
+	if msg != "" {
+		t.Errorf("msg = %q, want empty (valid)", msg)
+	}
+}
+
+func TestHandleResizeShelf_NameUpdate(t *testing.T) {
+	router, store := setupTestRouter(t)
+
+	body := `{"rows":5,"cols":10,"name":"Workshop"}`
+	req := httptest.NewRequest("PUT", "/api/shelf/resize", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	// Verify name was updated in the database
+	var name string
+	err := store.db.QueryRow("SELECT name FROM shelf LIMIT 1").Scan(&name)
+	if err != nil {
+		t.Fatalf("query shelf name: %v", err)
+	}
+	if name != "Workshop" {
+		t.Errorf("shelf name = %q, want %q", name, "Workshop")
+	}
+}

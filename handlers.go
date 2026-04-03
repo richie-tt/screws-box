@@ -106,6 +106,54 @@ func validateAddTag(req *AddTagRequest) string {
 	return ""
 }
 
+func validateResizeRequest(req *ResizeRequest) string {
+	if req.Rows < 1 || req.Rows > 26 {
+		return "rows must be between 1 and 26"
+	}
+	if req.Cols < 1 || req.Cols > 30 {
+		return "cols must be between 1 and 30"
+	}
+	if req.Name != nil {
+		trimmed := strings.TrimSpace(*req.Name)
+		req.Name = &trimmed
+		if len(trimmed) > 100 {
+			return "name must be at most 100 characters"
+		}
+	}
+	return ""
+}
+
+func handleResizeShelf(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req ResizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		if msg := validateResizeRequest(&req); msg != "" {
+			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+		result, err := store.ResizeShelf(r.Context(), req.Rows, req.Cols)
+		if err != nil {
+			slog.Error("resize shelf", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if result.Blocked {
+			writeJSON(w, http.StatusConflict, result)
+			return
+		}
+		// If name provided, update shelf name.
+		if req.Name != nil && *req.Name != "" {
+			if err := store.UpdateShelfName(r.Context(), *req.Name); err != nil {
+				slog.Error("update shelf name", "err", err)
+			}
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 // --- Template handler ---
 
 func handleGrid(store *Store) http.HandlerFunc {
