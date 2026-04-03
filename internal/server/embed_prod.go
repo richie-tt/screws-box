@@ -1,12 +1,12 @@
 //go:build !dev
 
-package main
+package server
 
 import "embed"
 
 //go:embed templates static
 var embeddedFS embed.FS
 
-// contentFS is the filesystem used to serve templates and static files.
+// ContentFS is the filesystem used to serve templates and static files.
 // In production builds, files are embedded in the binary.
-var contentFS = embeddedFS
+var ContentFS = embeddedFS

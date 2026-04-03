@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{block "title" .}}Screws Box{{end}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script>
+      // Apply saved theme before first paint to prevent flash
+      (function(){var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t)})();
+    </script>
+    {{block "extra_head" .}}{{end}}
+</head>
+<body>
+    <header>
+        <nav>
+            <hgroup>
+                <h1>{{block "app_title" .}}Screws Box{{end}}</h1>
+                <p>Small fastener organizer</p>
+            </hgroup>
+            <div class="header-actions">
+                <button class="ghost theme-toggle" aria-label="Toggle theme" title="Toggle theme">
+                    <svg class="icon-sun" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="8" cy="8" r="3"/>
+                        <path d="M8 1.5v1.5M8 13v1.5M2.1 2.1l1.05 1.05M12.85 12.85l1.05 1.05M1.5 8H3M13 8h1.5M2.1 13.9l1.05-1.05M12.85 3.15l1.05-1.05"/>
+                    </svg>
+                    <svg class="icon-moon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M13.5 8.5a5.5 5.5 0 0 1-7-7 5.5 5.5 0 1 0 7 7z"/>
+                    </svg>
+                </button>
+                {{block "header_actions" .}}{{end}}
+            </div>
+        </nav>
+    </header>
+    <main>
+        {{block "content" .}}{{end}}
+    </main>
+    <footer>
+        <small>Screws Box v0.1</small>
+    </footer>
+    <script>
+      (function(){
+        var btn = document.querySelector('.theme-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+          var html = document.documentElement;
+          var current = html.getAttribute('data-theme');
+          var next;
+          if (current === 'dark') {
+            next = 'light';
+          } else if (current === 'light') {
+            next = 'dark';
+          } else {
+            // No manual choice yet — toggle opposite of system preference
+            next = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark';
+          }
+          html.setAttribute('data-theme', next);
+          localStorage.setItem('theme', next);
+        });
+      })();
+    </script>
+</body>
+</html>

@@ -898,11 +898,11 @@
     settingsTrigger.classList.add('active');
 
     var panel = document.createElement('div');
-    panel.className = 'settings-panel';
+    panel.className = 'expanded-panel settings-panel';
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', 'Grid settings');
 
-    // Header
+    // Header — same pattern as cell panel
     var header = document.createElement('div');
     header.className = 'panel-header';
     var coordSpan = document.createElement('span');
@@ -912,7 +912,6 @@
     var closeBtn = document.createElement('button');
     closeBtn.className = 'expanded-close';
     closeBtn.type = 'button';
-    closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.textContent = '\u00D7';
     closeBtn.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -921,20 +920,23 @@
     header.appendChild(closeBtn);
     panel.appendChild(header);
 
-    // Body
+    // Body — uses .expanded-form wrapper like cell panel forms
     var body = document.createElement('div');
     body.className = 'panel-body';
+
+    var form = document.createElement('div');
+    form.className = 'expanded-form';
 
     var nameLabel = document.createElement('label');
     nameLabel.setAttribute('for', 'settings-name');
     nameLabel.textContent = 'Shelf name';
-    body.appendChild(nameLabel);
+    form.appendChild(nameLabel);
     var nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.id = 'settings-name';
     nameInput.value = shelfName;
     nameInput.maxLength = 100;
-    body.appendChild(nameInput);
+    form.appendChild(nameInput);
 
     var gridInputs = document.createElement('div');
     gridInputs.className = 'settings-grid-inputs';
@@ -969,13 +971,13 @@
     rowDiv.appendChild(rowInput);
     gridInputs.appendChild(rowDiv);
 
-    body.appendChild(gridInputs);
+    form.appendChild(gridInputs);
 
     var errorEl = document.createElement('div');
     errorEl.className = 'form-error';
     errorEl.id = 'settings-error';
     errorEl.hidden = true;
-    body.appendChild(errorEl);
+    form.appendChild(errorEl);
 
     var actions = document.createElement('div');
     actions.className = 'form-actions';
@@ -984,7 +986,7 @@
     cancelBtn.type = 'button';
     cancelBtn.className = 'secondary';
     cancelBtn.id = 'settings-cancel';
-    cancelBtn.textContent = 'Discard Changes';
+    cancelBtn.textContent = 'Cancel';
     cancelBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       closeSettingsPanel();
@@ -994,7 +996,7 @@
     var saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.id = 'settings-save';
-    saveBtn.textContent = 'Save Settings';
+    saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', async function (e) {
       e.stopPropagation();
 
@@ -1030,8 +1032,7 @@
       saveBtn.disabled = true;
       cancelBtn.disabled = true;
 
-      var payload = { rows: rows, cols: cols };
-      if (name) payload.name = name;
+      var payload = { rows: rows, cols: cols, name: name };
 
       try {
         var resp = await fetch('/api/shelf/resize', {
@@ -1068,35 +1069,24 @@
     });
     actions.appendChild(saveBtn);
 
-    body.appendChild(actions);
+    form.appendChild(actions);
+    body.appendChild(form);
     panel.appendChild(body);
 
     document.body.appendChild(panel);
     settingsPanel = panel;
 
-    // Position panel near the gear icon
+    // Position panel below the gear icon, right-aligned
     var rect = settingsTrigger.getBoundingClientRect();
     var panelWidth = 280;
     var topPos = rect.bottom + 8;
-    var leftPos = rect.left;
-
-    // Keep within viewport
-    if (leftPos + panelWidth > window.innerWidth - 8) {
-      leftPos = window.innerWidth - panelWidth - 8;
-    }
+    var leftPos = rect.right - panelWidth;
     if (leftPos < 8) leftPos = 8;
     if (topPos + 300 > window.innerHeight) {
       topPos = Math.max(8, rect.top - 300 - 8);
     }
-
-    // Mobile: center horizontally
-    if (window.innerWidth <= 860) {
-      panel.style.top = topPos + 'px';
-      // Let CSS handle horizontal centering via left/right !important
-    } else {
-      panel.style.top = topPos + 'px';
-      panel.style.left = leftPos + 'px';
-    }
+    panel.style.top = topPos + 'px';
+    panel.style.left = leftPos + 'px';
 
     nameInput.focus();
   }
@@ -1162,6 +1152,7 @@
     mFooter.className = 'resize-modal-footer';
     var okBtn = document.createElement('button');
     okBtn.id = 'resize-modal-ok';
+    okBtn.className = 'secondary';
     okBtn.textContent = 'Back to Grid';
     okBtn.addEventListener('click', function () {
       closeResizeModal();

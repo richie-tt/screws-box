@@ -1,4 +1,4 @@
-package main
+package store
 
 import (
 	"context"
@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"screws-box/internal/model"
+
 	_ "modernc.org/sqlite"
 )
 
 // schemaDDL contains all CREATE TABLE and CREATE INDEX statements.
-// Executed idempotently on every startup via CREATE ... IF NOT EXISTS.
-// Per D-12: single Go function, run on every startup.
 var schemaDDL = []string{
 	`CREATE TABLE IF NOT EXISTS shelf (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +51,6 @@ var schemaDDL = []string{
 		tag_id INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
 		PRIMARY KEY (item_id, tag_id)
 	)`,
-	// Foreign key indexes for CASCADE performance
 	`CREATE INDEX IF NOT EXISTS idx_container_shelf_id ON container(shelf_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_item_container_id ON item(container_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_item_tag_item_id ON item_tag(item_id)`,
@@ -63,13 +62,14 @@ type Store struct {
 	db *sql.DB
 }
 
-// Open opens the SQLite database at dbPath, configures pragmas via DSN,
+// DB returns the underlying *sql.DB for direct queries in tests.
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
+// Open opens the SQLite database at dbPath, configures pragmas,
 // creates the schema, and seeds the default shelf if needed.
-// Per D-01: dbPath comes from DB_PATH env var (handled by caller).
 func (s *Store) Open(dbPath string) error {
-	// DSN with pragmas set per-connection (not post-open Exec).
-	// This ensures every connection from the pool gets the pragmas.
-	// Per STATE.md locked decision: WAL + foreign_keys + busy_timeout in Store.Open().
 	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", dbPath)
 
 	db, err := sql.Open("sqlite", dsn)
@@ -106,8 +106,6 @@ func (s *Store) Close() error {
 	return nil
 }
 
-// createSchema runs all DDL statements in a single transaction.
-// Idempotent: uses CREATE ... IF NOT EXISTS.
 func (s *Store) createSchema() error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -123,18 +121,13 @@ func (s *Store) createSchema() error {
 	return tx.Commit()
 }
 
-// seedDefaultShelf creates the default shelf with 5 rows and 10 columns
-// (50 containers) if no shelf exists yet.
-// Per D-02: default shelf 5x10 on first run.
-// Per D-03: auto-generate all 50 container records.
-// Per D-11: shelf name defaults to "My Organizer".
 func (s *Store) seedDefaultShelf() error {
 	var count int
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM shelf").Scan(&count); err != nil {
 		return fmt.Errorf("check shelf count: %w", err)
 	}
 	if count > 0 {
-		return nil // already seeded
+		return nil
 	}
 
 	tx, err := s.db.Begin()
@@ -179,19 +172,16 @@ func (s *Store) seedDefaultShelf() error {
 // pos is an unexported key for the item-count lookup map.
 type pos struct{ row, col int }
 
-// GetGridData loads the first shelf and builds a GridData view model
-// with container item counts for template rendering.
-func (s *Store) GetGridData() (*GridData, error) {
-	// Load the first shelf.
+// GetGridData loads the first shelf and builds a GridData view model.
+func (s *Store) GetGridData() (*model.GridData, error) {
 	var shelfID int64
-	var shelf Shelf
+	var shelf model.Shelf
 	err := s.db.QueryRow("SELECT id, name, rows, cols FROM shelf LIMIT 1").
 		Scan(&shelfID, &shelf.Name, &shelf.Rows, &shelf.Cols)
 	if err != nil {
 		return nil, fmt.Errorf("query shelf: %w", err)
 	}
 
-	// Query containers with item counts.
 	rows, err := s.db.Query(`
 		SELECT c.id, c.col, c.row, COUNT(i.id) AS item_count
 		FROM container c
@@ -221,18 +211,16 @@ func (s *Store) GetGridData() (*GridData, error) {
 		return nil, fmt.Errorf("iterate containers: %w", err)
 	}
 
-	// Build ColNumbers slice.
 	colNums := make([]int, shelf.Cols)
 	for i := range colNums {
 		colNums[i] = i + 1
 	}
 
-	// Build nested Grid structure.
-	grid := make([]Row, shelf.Rows)
+	grid := make([]model.Row, shelf.Rows)
 	for r := 1; r <= shelf.Rows; r++ {
-		row := Row{
+		row := model.Row{
 			Letter: string(rune('A' + r - 1)),
-			Cells:  make([]Cell, shelf.Cols),
+			Cells:  make([]model.Cell, shelf.Cols),
 		}
 		for c := 1; c <= shelf.Cols; c++ {
 			info := cells[pos{row: r, col: c}]
@@ -240,8 +228,8 @@ func (s *Store) GetGridData() (*GridData, error) {
 			if (c+r)%2 != 0 {
 				cssClass = "cell-dark"
 			}
-			row.Cells[c-1] = Cell{
-				Coord:       labelFor(c, r),
+			row.Cells[c-1] = model.Cell{
+				Coord:       model.LabelFor(c, r),
 				Col:         c,
 				Row:         r,
 				Count:       info.count,
@@ -253,7 +241,7 @@ func (s *Store) GetGridData() (*GridData, error) {
 		grid[r-1] = row
 	}
 
-	return &GridData{
+	return &model.GridData{
 		ShelfName:  shelf.Name,
 		Rows:       shelf.Rows,
 		Cols:       shelf.Cols,
@@ -262,22 +250,14 @@ func (s *Store) GetGridData() (*GridData, error) {
 	}, nil
 }
 
-// formatTime formats a time.Time as RFC3339 string for API responses.
-func formatTime(t time.Time) string {
-	return t.Format(time.RFC3339)
-}
-
 // CreateItem inserts an item with name, description, and tags in a single transaction.
-// Tags are auto-created if they don't exist (per D-14). Caller should deduplicate
-// and lowercase-normalize tags before calling.
-func (s *Store) CreateItem(ctx context.Context, containerID int64, name string, description *string, tags []string) (*ItemResponse, error) {
+func (s *Store) CreateItem(ctx context.Context, containerID int64, name string, description *string, tags []string) (*model.ItemResponse, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Check container exists (per D-11).
 	var cID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM container WHERE id = ?", containerID).Scan(&cID)
 	if err == sql.ErrNoRows {
@@ -287,7 +267,6 @@ func (s *Store) CreateItem(ctx context.Context, containerID int64, name string, 
 		return nil, fmt.Errorf("check container: %w", err)
 	}
 
-	// Insert item.
 	res, err := tx.ExecContext(ctx,
 		"INSERT INTO item (container_id, name, description, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))",
 		containerID, name, description)
@@ -299,9 +278,7 @@ func (s *Store) CreateItem(ctx context.Context, containerID int64, name string, 
 		return nil, fmt.Errorf("get item id: %w", err)
 	}
 
-	// Insert tags and associations.
 	for _, tagName := range tags {
-		// Auto-create tag if not exists (per D-14).
 		if _, err := tx.ExecContext(ctx,
 			"INSERT OR IGNORE INTO tag (name, created_at, updated_at) VALUES (?, datetime('now'), datetime('now'))",
 			tagName); err != nil {
@@ -329,8 +306,8 @@ func (s *Store) CreateItem(ctx context.Context, containerID int64, name string, 
 
 // GetItem returns an item with tags and computed container label.
 // Returns nil, nil if the item does not exist.
-func (s *Store) GetItem(ctx context.Context, id int64) (*ItemResponse, error) {
-	var item ItemResponse
+func (s *Store) GetItem(ctx context.Context, id int64) (*model.ItemResponse, error) {
+	var item model.ItemResponse
 	var col, row int
 	var createdAt, updatedAt time.Time
 
@@ -346,11 +323,10 @@ func (s *Store) GetItem(ctx context.Context, id int64) (*ItemResponse, error) {
 		return nil, fmt.Errorf("get item: %w", err)
 	}
 
-	item.ContainerLabel = labelFor(col, row)
-	item.CreatedAt = formatTime(createdAt)
-	item.UpdatedAt = formatTime(updatedAt)
+	item.ContainerLabel = model.LabelFor(col, row)
+	item.CreatedAt = model.FormatTime(createdAt)
+	item.UpdatedAt = model.FormatTime(updatedAt)
 
-	// Fetch tags.
 	tagRows, err := s.db.QueryContext(ctx,
 		"SELECT t.name FROM tag t JOIN item_tag it ON it.tag_id = t.id WHERE it.item_id = ? ORDER BY t.name", id)
 	if err != nil {
@@ -375,16 +351,14 @@ func (s *Store) GetItem(ctx context.Context, id int64) (*ItemResponse, error) {
 }
 
 // UpdateItem changes name, description, and container_id of an item.
-// Per D-18: does NOT touch tags.
-// Returns nil, nil if the item does not exist.
-func (s *Store) UpdateItem(ctx context.Context, id int64, name string, description *string, containerID int64) (*ItemResponse, error) {
+// Does NOT touch tags. Returns nil, nil if the item does not exist.
+func (s *Store) UpdateItem(ctx context.Context, id int64, name string, description *string, containerID int64) (*model.ItemResponse, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Check item exists.
 	var itemID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM item WHERE id = ?", id).Scan(&itemID)
 	if err == sql.ErrNoRows {
@@ -394,7 +368,6 @@ func (s *Store) UpdateItem(ctx context.Context, id int64, name string, descripti
 		return nil, fmt.Errorf("check item: %w", err)
 	}
 
-	// Check target container exists.
 	var cID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM container WHERE id = ?", containerID).Scan(&cID)
 	if err == sql.ErrNoRows {
@@ -404,7 +377,6 @@ func (s *Store) UpdateItem(ctx context.Context, id int64, name string, descripti
 		return nil, fmt.Errorf("check container: %w", err)
 	}
 
-	// Update item.
 	if _, err := tx.ExecContext(ctx,
 		"UPDATE item SET name = ?, description = ?, container_id = ?, updated_at = datetime('now') WHERE id = ?",
 		name, description, containerID, id); err != nil {
@@ -419,7 +391,6 @@ func (s *Store) UpdateItem(ctx context.Context, id int64, name string, descripti
 }
 
 // DeleteItem removes an item by ID. CASCADE handles item_tag cleanup.
-// Returns error if the item does not exist.
 func (s *Store) DeleteItem(ctx context.Context, id int64) error {
 	var itemID int64
 	err := s.db.QueryRowContext(ctx, "SELECT id FROM item WHERE id = ?", id).Scan(&itemID)
@@ -437,15 +408,13 @@ func (s *Store) DeleteItem(ctx context.Context, id int64) error {
 }
 
 // AddTagToItem creates the tag if not exists and links it to the item.
-// Returns the updated item.
-func (s *Store) AddTagToItem(ctx context.Context, itemID int64, tagName string) (*ItemResponse, error) {
+func (s *Store) AddTagToItem(ctx context.Context, itemID int64, tagName string) (*model.ItemResponse, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Check item exists.
 	var iID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM item WHERE id = ?", itemID).Scan(&iID)
 	if err == sql.ErrNoRows {
@@ -455,7 +424,6 @@ func (s *Store) AddTagToItem(ctx context.Context, itemID int64, tagName string) 
 		return nil, fmt.Errorf("check item: %w", err)
 	}
 
-	// Auto-create tag if not exists (per D-14).
 	if _, err := tx.ExecContext(ctx,
 		"INSERT OR IGNORE INTO tag (name, created_at, updated_at) VALUES (?, datetime('now'), datetime('now'))",
 		tagName); err != nil {
@@ -467,14 +435,12 @@ func (s *Store) AddTagToItem(ctx context.Context, itemID int64, tagName string) 
 		return nil, fmt.Errorf("get tag id: %w", err)
 	}
 
-	// Link tag to item (IGNORE handles already-linked case).
 	if _, err := tx.ExecContext(ctx,
 		"INSERT OR IGNORE INTO item_tag (item_id, tag_id) VALUES (?, ?)",
 		itemID, tagID); err != nil {
 		return nil, fmt.Errorf("insert item_tag: %w", err)
 	}
 
-	// Update item.updated_at.
 	if _, err := tx.ExecContext(ctx,
 		"UPDATE item SET updated_at = datetime('now') WHERE id = ?", itemID); err != nil {
 		return nil, fmt.Errorf("update item timestamp: %w", err)
@@ -488,9 +454,8 @@ func (s *Store) AddTagToItem(ctx context.Context, itemID int64, tagName string) 
 }
 
 // RemoveTagFromItem removes the tag association from an item.
-// Per D-15: the tag itself remains in the tag table (orphaned tags kept).
+// The tag itself remains in the tag table (orphaned tags kept).
 func (s *Store) RemoveTagFromItem(ctx context.Context, itemID int64, tagName string) error {
-	// Get tag ID.
 	var tagID int64
 	err := s.db.QueryRowContext(ctx, "SELECT id FROM tag WHERE name = ?", tagName).Scan(&tagID)
 	if err == sql.ErrNoRows {
@@ -500,7 +465,6 @@ func (s *Store) RemoveTagFromItem(ctx context.Context, itemID int64, tagName str
 		return fmt.Errorf("get tag: %w", err)
 	}
 
-	// Delete junction row.
 	res, err := s.db.ExecContext(ctx, "DELETE FROM item_tag WHERE item_id = ? AND tag_id = ?", itemID, tagID)
 	if err != nil {
 		return fmt.Errorf("delete item_tag: %w", err)
@@ -513,7 +477,6 @@ func (s *Store) RemoveTagFromItem(ctx context.Context, itemID int64, tagName str
 		return fmt.Errorf("tag not associated with item")
 	}
 
-	// Update item.updated_at.
 	if _, err := s.db.ExecContext(ctx,
 		"UPDATE item SET updated_at = datetime('now') WHERE id = ?", itemID); err != nil {
 		return fmt.Errorf("update item timestamp: %w", err)
@@ -524,8 +487,8 @@ func (s *Store) RemoveTagFromItem(ctx context.Context, itemID int64, tagName str
 
 // ListItemsByContainer returns a container with all its items and tags.
 // Returns nil, nil if the container does not exist.
-func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*ContainerWithItems, error) {
-	var c ContainerWithItems
+func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*model.ContainerWithItems, error) {
+	var c model.ContainerWithItems
 	var createdAt, updatedAt time.Time
 
 	err := s.db.QueryRowContext(ctx,
@@ -538,11 +501,10 @@ func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*C
 		return nil, fmt.Errorf("get container: %w", err)
 	}
 
-	c.Label = labelFor(c.Col, c.Row)
-	c.CreatedAt = formatTime(createdAt)
-	c.UpdatedAt = formatTime(updatedAt)
+	c.Label = model.LabelFor(c.Col, c.Row)
+	c.CreatedAt = model.FormatTime(createdAt)
+	c.UpdatedAt = model.FormatTime(updatedAt)
 
-	// Query item IDs in this container.
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT id FROM item WHERE container_id = ? ORDER BY name", containerID)
 	if err != nil {
@@ -550,7 +512,7 @@ func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*C
 	}
 	defer rows.Close()
 
-	items := []ItemResponse{}
+	items := []model.ItemResponse{}
 	for rows.Next() {
 		var itemID int64
 		if err := rows.Scan(&itemID); err != nil {
@@ -573,14 +535,14 @@ func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*C
 }
 
 // ListAllItems returns all items across all containers with tags.
-func (s *Store) ListAllItems(ctx context.Context) ([]ItemResponse, error) {
+func (s *Store) ListAllItems(ctx context.Context) ([]model.ItemResponse, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT id FROM item ORDER BY name")
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
 	}
 	defer rows.Close()
 
-	items := []ItemResponse{}
+	items := []model.ItemResponse{}
 	for rows.Next() {
 		var itemID int64
 		if err := rows.Scan(&itemID); err != nil {
@@ -601,12 +563,10 @@ func (s *Store) ListAllItems(ctx context.Context) ([]ItemResponse, error) {
 	return items, nil
 }
 
-// SearchItems finds items matching query by partial name (case-insensitive LIKE)
-// or exact tag match. Results are deduplicated and sorted by container position
-// (col ASC, row ASC). The query should already be lowercased and trimmed by the caller.
-func (s *Store) SearchItems(ctx context.Context, query string) ([]ItemResponse, error) {
+// SearchItems finds items matching query by partial name or exact tag match.
+func (s *Store) SearchItems(ctx context.Context, query string) ([]model.ItemResponse, error) {
 	if query == "" {
-		return []ItemResponse{}, nil
+		return []model.ItemResponse{}, nil
 	}
 
 	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
@@ -634,7 +594,7 @@ func (s *Store) SearchItems(ctx context.Context, query string) ([]ItemResponse, 
 	}
 	defer rows.Close()
 
-	var items []ItemResponse
+	var items []model.ItemResponse
 	for rows.Next() {
 		var id int64
 		var col, row int
@@ -654,23 +614,19 @@ func (s *Store) SearchItems(ctx context.Context, query string) ([]ItemResponse, 
 	}
 
 	if items == nil {
-		items = []ItemResponse{}
+		items = []model.ItemResponse{}
 	}
 	return items, nil
 }
 
-// ResizeShelf atomically resizes the shelf grid. If shrinking would remove
-// containers that contain items, it returns Blocked=true with affected details.
-// Otherwise it deletes empty out-of-bounds containers, updates shelf dimensions,
-// and creates new containers for expanded bounds.
-func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*ResizeResult, error) {
+// ResizeShelf atomically resizes the shelf grid.
+func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Get current shelf.
 	var shelfID int64
 	var curRows, curCols int
 	err = tx.QueryRowContext(ctx, "SELECT id, rows, cols FROM shelf LIMIT 1").Scan(&shelfID, &curRows, &curCols)
@@ -678,7 +634,6 @@ func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*ResizeR
 		return nil, fmt.Errorf("get shelf: %w", err)
 	}
 
-	// Find containers outside new bounds.
 	outRows, err := tx.QueryContext(ctx,
 		"SELECT c.id, c.col, c.row FROM container c WHERE c.shelf_id = ? AND (c.row > ? OR c.col > ?)",
 		shelfID, newRows, newCols)
@@ -704,8 +659,7 @@ func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*ResizeR
 		return nil, fmt.Errorf("iterate containers: %w", err)
 	}
 
-	// Check each out-of-bounds container for items.
-	var affected []AffectedContainer
+	var affected []model.AffectedContainer
 	for _, oc := range outsideContainers {
 		itemRows, err := tx.QueryContext(ctx, "SELECT name FROM item WHERE container_id = ?", oc.id)
 		if err != nil {
@@ -726,17 +680,16 @@ func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*ResizeR
 		}
 
 		if len(items) > 0 {
-			affected = append(affected, AffectedContainer{
-				Label:     labelFor(oc.col, oc.row),
+			affected = append(affected, model.AffectedContainer{
+				Label:     model.LabelFor(oc.col, oc.row),
 				ItemCount: len(items),
 				Items:     items,
 			})
 		}
 	}
 
-	// If any containers with items would be removed, block the resize.
 	if len(affected) > 0 {
-		return &ResizeResult{
+		return &model.ResizeResult{
 			Rows:               curRows,
 			Cols:               curCols,
 			Blocked:            true,
@@ -745,7 +698,6 @@ func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*ResizeR
 		}, nil
 	}
 
-	// Safe to resize: delete empty containers outside bounds.
 	delResult, err := tx.ExecContext(ctx,
 		"DELETE FROM container WHERE shelf_id = ? AND (row > ? OR col > ?)",
 		shelfID, newRows, newCols)
@@ -754,14 +706,12 @@ func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*ResizeR
 	}
 	removed, _ := delResult.RowsAffected()
 
-	// Update shelf dimensions.
 	if _, err := tx.ExecContext(ctx,
 		"UPDATE shelf SET rows = ?, cols = ?, updated_at = datetime('now') WHERE id = ?",
 		newRows, newCols, shelfID); err != nil {
 		return nil, fmt.Errorf("update shelf: %w", err)
 	}
 
-	// Insert new containers (INSERT OR IGNORE handles overlap with existing).
 	var added int64
 	for col := 1; col <= newCols; col++ {
 		for row := 1; row <= newRows; row++ {
@@ -780,7 +730,7 @@ func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*ResizeR
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 
-	return &ResizeResult{
+	return &model.ResizeResult{
 		Rows:              newRows,
 		Cols:              newCols,
 		ContainersAdded:   int(added),
@@ -796,7 +746,7 @@ func (s *Store) UpdateShelfName(ctx context.Context, name string) error {
 }
 
 // ListTags returns all tags, optionally filtered by name prefix.
-func (s *Store) ListTags(ctx context.Context, prefix string) ([]TagResponse, error) {
+func (s *Store) ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error) {
 	var rows *sql.Rows
 	var err error
 
@@ -810,15 +760,15 @@ func (s *Store) ListTags(ctx context.Context, prefix string) ([]TagResponse, err
 	}
 	defer rows.Close()
 
-	tags := []TagResponse{}
+	tags := []model.TagResponse{}
 	for rows.Next() {
-		var t TagResponse
+		var t model.TagResponse
 		var createdAt, updatedAt time.Time
 		if err := rows.Scan(&t.ID, &t.Name, &createdAt, &updatedAt); err != nil {
 			return nil, fmt.Errorf("scan tag: %w", err)
 		}
-		t.CreatedAt = formatTime(createdAt)
-		t.UpdatedAt = formatTime(updatedAt)
+		t.CreatedAt = model.FormatTime(createdAt)
+		t.UpdatedAt = model.FormatTime(updatedAt)
 		tags = append(tags, t)
 	}
 	if err := rows.Err(); err != nil {

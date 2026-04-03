@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	"fmt"
@@ -30,7 +30,7 @@ type Item struct {
 	ID          int64
 	ContainerID int64
 	Name        string
-	Description *string // nullable, per D-06
+	Description *string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -38,7 +38,7 @@ type Item struct {
 // Tag represents a lowercase-normalized label for categorizing items.
 type Tag struct {
 	ID        int64
-	Name      string // always lowercase, per D-08
+	Name      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -48,30 +48,29 @@ type GridData struct {
 	ShelfName  string
 	Rows       int
 	Cols       int
-	ColNumbers []int // [1, 2, 3, ..., Cols] for column header iteration
+	ColNumbers []int
 	Grid       []Row
-	Error      string // non-empty if shelf could not be loaded
+	Error      string
 }
 
 // Row represents one row in the grid display.
 type Row struct {
-	Letter string // "A", "B", "C", ...
+	Letter string
 	Cells  []Cell
 }
 
 // Cell represents one container position.
 type Cell struct {
-	Coord    string // from labelFor(), e.g. "3B"
-	Col      int    // 1-based
-	Row      int    // 1-based
-	Count    int    // number of items
-	IsEmpty  bool   // true when Count == 0
-	CSSClass    string // "cell-light" or "cell-dark"
-	ContainerID int64  // database container.id, for API calls from JS
+	Coord       string
+	Col         int
+	Row         int
+	Count       int
+	IsEmpty     bool
+	CSSClass    string
+	ContainerID int64
 }
 
 // ItemResponse is the API-ready representation of an item.
-// Tags are a string array (per D-01), ContainerLabel computed via labelFor() (per D-02).
 type ItemResponse struct {
 	ID             int64    `json:"id"`
 	ContainerID    int64    `json:"container_id"`
@@ -91,7 +90,7 @@ type TagResponse struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-// ContainerWithItems is the response for GET /api/containers/:id/items (per D-20).
+// ContainerWithItems is the response for GET /api/containers/:id/items.
 type ContainerWithItems struct {
 	ID        int64          `json:"id"`
 	ShelfID   int64          `json:"shelf_id"`
@@ -103,24 +102,11 @@ type ContainerWithItems struct {
 	UpdatedAt string         `json:"updated_at"`
 }
 
-// dedup returns a new slice with duplicate strings removed, preserving order.
-func dedup(ss []string) []string {
-	seen := make(map[string]bool, len(ss))
-	result := make([]string, 0, len(ss))
-	for _, s := range ss {
-		if !seen[s] {
-			seen[s] = true
-			result = append(result, s)
-		}
-	}
-	return result
-}
-
 // ResizeRequest holds the parameters for a shelf resize operation.
 type ResizeRequest struct {
-	Rows int      `json:"rows"`
-	Cols int      `json:"cols"`
-	Name *string  `json:"name,omitempty"`
+	Rows int     `json:"rows"`
+	Cols int     `json:"cols"`
+	Name *string `json:"name,omitempty"`
 }
 
 // ResizeResult holds the outcome of a shelf resize operation.
@@ -142,10 +128,28 @@ type AffectedContainer struct {
 	Items     []string `json:"items"`
 }
 
-// labelFor converts a (col, row) pair to a human-readable label.
+// LabelFor converts a (col, row) pair to a human-readable label.
 // col is the column number (1-based), row becomes a letter (1=A, 2=B, ...).
-// Example: labelFor(3, 2) returns "3B".
-// Per D-05: label is NEVER stored in DB, always computed by this function.
-func labelFor(col, row int) string {
+// Example: LabelFor(3, 2) returns "3B".
+// Label is NEVER stored in DB, always computed by this function.
+func LabelFor(col, row int) string {
 	return fmt.Sprintf("%d%c", col, 'A'+rune(row-1))
+}
+
+// Dedup returns a new slice with duplicate strings removed, preserving order.
+func Dedup(ss []string) []string {
+	seen := make(map[string]bool, len(ss))
+	result := make([]string, 0, len(ss))
+	for _, s := range ss {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+// FormatTime formats a time.Time as RFC3339 string for API responses.
+func FormatTime(t time.Time) string {
+	return t.Format(time.RFC3339)
 }
