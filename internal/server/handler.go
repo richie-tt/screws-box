@@ -117,6 +117,7 @@ type StoreService interface {
 	ListItemsByContainer(ctx context.Context, containerID int64) (*model.ContainerWithItems, error)
 	ListAllItems(ctx context.Context) ([]model.ItemResponse, error)
 	SearchItems(ctx context.Context, query string) ([]model.ItemResponse, error)
+	SearchItemsByTags(ctx context.Context, query string, tags []string) ([]model.ItemResponse, error)
 	ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error)
 	ResizeShelf(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	UpdateShelfName(ctx context.Context, name string) error
@@ -497,12 +498,31 @@ func handleListItems(s StoreService) http.HandlerFunc {
 func handleSearch(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-		if q == "" {
+		tagParam := strings.TrimSpace(r.URL.Query().Get("tags"))
+
+		var tags []string
+		if tagParam != "" {
+			for _, t := range strings.Split(tagParam, ",") {
+				t = strings.ToLower(strings.TrimSpace(t))
+				if t != "" {
+					tags = append(tags, t)
+				}
+			}
+		}
+
+		// When tags are active but no text query, search by tags only.
+		if q == "" && len(tags) == 0 {
 			writeJSON(w, http.StatusOK, map[string][]model.ItemResponse{"results": {}})
 			return
 		}
 
-		items, err := s.SearchItems(r.Context(), q)
+		var items []model.ItemResponse
+		var err error
+		if len(tags) > 0 {
+			items, err = s.SearchItemsByTags(r.Context(), q, tags)
+		} else {
+			items, err = s.SearchItems(r.Context(), q)
+		}
 		if err != nil {
 			slog.Error("search items", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
