@@ -1519,7 +1519,11 @@
     renderFilterChips();
     updateClearButton();
     var query = searchInput.value.trim();
-    performUnifiedSearch(query);
+    if (query) {
+      performUnifiedSearch(query);
+    } else {
+      clearSearch();
+    }
     updateSearchURL(query, activeFilterTags, true);
   }
 
