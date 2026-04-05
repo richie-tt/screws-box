@@ -1,97 +1,91 @@
-# Requirements: Screws Box
+# Requirements: Screws Box v1.1
 
-**Defined:** 2026-04-02
+**Defined:** 2026-04-05
 **Core Value:** Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elementu.
 
-## v1 Requirements
-
-### Grid Display
-
-- [x] **GRID-01**: User can configure shelf dimensions (rows x columns, e.g., 5x10)
-- [x] **GRID-02**: Grid displays as visual chessboard with column numbers (1,2,3...) and row letters (A,B,C...)
-- [x] **GRID-03**: Each container shows its label (e.g., "3B") and item count
-- [x] **GRID-04**: Grid is responsive — usable on phone/tablet in workshop
-- [x] **GRID-05**: Grid resize warns about items in removed containers and blocks if items would be orphaned
-
-### Item Management
-
-- [x] **ITEM-01**: User can add item to container by clicking container on grid
-- [x] **ITEM-02**: Item has name and multiple tags (e.g., "m6", "sprężynowa", "powiększona")
-- [x] **ITEM-03**: User can edit item name and tags
-- [x] **ITEM-04**: User can delete item
-- [x] **ITEM-05**: One container can hold multiple different items
-- [x] **ITEM-06**: Tag autocomplete suggests existing tags when adding/editing items
+## v1.1 Requirements
 
 ### Search
 
-- [ ] **SRCH-01**: User can search by typing in search field — results appear as-you-type
-- [ ] **SRCH-02**: Search matches item names and tags
-- [ ] **SRCH-03**: Search is case-insensitive and supports partial matching ("m6" finds "M6", "spręż" finds "sprężynowa")
-- [x] **SRCH-04**: Results display as list with item name, tags, and container position (e.g., "3B")
-- [x] **SRCH-05**: Matching containers are visually highlighted on the grid
-- [ ] **SRCH-06**: Keyboard navigation through search results
+- [ ] **SRCH-01**: User can filter items by multiple tags (AND logic) via tag filter bar with autocomplete
+- [ ] **SRCH-02**: Main search includes description field in results
+- [ ] **SRCH-03**: When tags are active in filter, main search searches only name + description (not tags)
+- [ ] **SRCH-04**: Search query refactored to batch load (eliminates N+1 GetItem calls)
 
-### Infrastructure
+### OIDC
 
-- [x] **INFR-01**: Data stored in SQLite database
-- [x] **INFR-02**: App accessible on local network (0.0.0.0, not just localhost)
-- [x] **INFR-03**: Single Go binary deployment (assets embedded via go:embed)
+- [ ] **OIDC-01**: User can login via OIDC provider (Authelia, Google — any standard OIDC discovery)
+- [ ] **OIDC-02**: OIDC flow uses PKCE + state + nonce per RFC 9700
+- [ ] **OIDC-03**: Local auth remains available as fallback when OIDC is enabled
+- [ ] **OIDC-04**: Admin can configure OIDC provider (issuer URL, client ID/secret, display name)
 
-## v2 Requirements
+### Admin Panel
 
-### Quality of Life
+- [ ] **ADMN-01**: Dedicated admin page at /admin with navigation
+- [ ] **ADMN-02**: Auth settings section (local auth + OIDC config)
+- [ ] **ADMN-03**: Shelf settings section (resize grid, rename — migrated from modal)
+- [ ] **ADMN-04**: Data export as JSON download
+- [ ] **ADMN-05**: Data import from JSON upload with validation
+- [ ] **ADMN-06**: Active sessions list with revoke capability
 
-- **QOL-01**: Bulk import — paste list of items to add multiple at once
-- **QOL-02**: Print view — printable reference to tape on shelf
-- **QOL-03**: Drag-and-drop items between containers
-- **QOL-04**: FTS5 full-text search for large datasets
+### Sessions
 
-### Multi-Shelf
+- [ ] **SESS-01**: Session store abstracted to interface (memory + Redis implementations)
+- [ ] **SESS-02**: Redis session store activated via REDIS_URL env var, fallback in-memory
+- [ ] **SESS-03**: Sessions expire after configurable TTL with sliding expiry
 
-- **SHELF-01**: Support multiple shelves/organizers
-- **SHELF-02**: Switch between shelves
+### Documentation
+
+- [ ] **DOCS-01**: README.md for developers + users (setup, config, env vars, dev workflow)
+
+## Future Requirements
+
+### Deferred
+
+- **FUT-01**: FTS5 full-text search (if LIKE becomes slow at 1000+ items)
+- **FUT-02**: Multiple shelves support
+- **FUT-03**: File-backed session persistence (alternative to Redis for restart survival)
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Quantity tracking / inventory | Not needed — you either have screws or you don't |
-| Authentication / login | Home network, trusted environment |
-| Mobile native app | Responsive web is sufficient |
-| Barcode / QR scanning | Hardware dependency, overkill for home workshop |
-| Purchase / ordering integration | Different product entirely |
-| Photo per item | Storage complexity, standard hardware doesn't need photos |
+| GitHub as OIDC provider | GitHub OAuth is NOT standard OIDC — use Authelia as proxy |
+| Multiple simultaneous OIDC providers | Overkill for single-user app — one provider at a time |
+| RBAC / multi-user roles | Single admin user, auth is on/off |
+| FTS5 full-text search | LIKE queries sufficient for home organizer scale |
+| Redis as required dependency | Must remain optional, single-binary + SQLite is core value |
+| Real-time collaborative editing | Single-user app, last-write-wins is fine |
+| Mobile app | Web responsive is sufficient |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRID-01 | Phase 4 | Complete |
-| GRID-02 | Phase 3 | Complete |
-| GRID-03 | Phase 4 | Complete |
-| GRID-04 | Phase 3 | Complete |
-| GRID-05 | Phase 10 | Complete |
-| ITEM-01 | Phase 6 | Complete |
-| ITEM-02 | Phase 5 | Complete |
-| ITEM-03 | Phase 6 | Complete |
-| ITEM-04 | Phase 5 | Complete |
-| ITEM-05 | Phase 5 | Complete |
-| ITEM-06 | Phase 7 | Complete |
-| SRCH-01 | Phase 9 | Pending |
-| SRCH-02 | Phase 8 | Pending |
-| SRCH-03 | Phase 8 | Pending |
-| SRCH-04 | Phase 9 | Complete |
-| SRCH-05 | Phase 9 | Complete |
-| SRCH-06 | Phase 9 | Pending |
-| INFR-01 | Phase 2 | Complete |
-| INFR-02 | Phase 1 | Complete |
-| INFR-03 | Phase 1 | Complete |
+| SRCH-01 | Phase 12 | Pending |
+| SRCH-02 | Phase 12 | Pending |
+| SRCH-03 | Phase 12 | Pending |
+| SRCH-04 | Phase 12 | Pending |
+| OIDC-01 | Phase 14 | Pending |
+| OIDC-02 | Phase 14 | Pending |
+| OIDC-03 | Phase 14 | Pending |
+| OIDC-04 | Phase 14 | Pending |
+| ADMN-01 | Phase 13 | Pending |
+| ADMN-02 | Phase 14 | Pending |
+| ADMN-03 | Phase 13 | Pending |
+| ADMN-04 | Phase 15 | Pending |
+| ADMN-05 | Phase 15 | Pending |
+| ADMN-06 | Phase 16 | Pending |
+| SESS-01 | Phase 11 | Pending |
+| SESS-02 | Phase 16 | Pending |
+| SESS-03 | Phase 11 | Pending |
+| DOCS-01 | Phase 17 | Pending |
 
 **Coverage:**
-- v1 requirements: 20 total
-- Mapped to phases: 20
+- v1.1 requirements: 18 total
+- Mapped to phases: 18
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-04-02*
-*Last updated: 2026-04-02 after roadmap creation — all requirements mapped*
+*Requirements defined: 2026-04-05*
+*Traceability updated: 2026-04-05*

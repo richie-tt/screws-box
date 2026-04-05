@@ -26,12 +26,23 @@ Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elem
 - [x] Wyszukiwanie tekstowe po nazwie lub tagu — Validated in Phase 8: Search Backend (GET /api/search?q=... with name LIKE + exact tag match)
 - [x] Wyniki wyszukiwania jako lista z pozycjami (np. "3B") — Validated in Phase 8: Search Backend (ItemResponse includes container_label)
 - [ ] Wizualne podświetlenie pasujących pojemników na siatce podczas wyszukiwania
+## Current Milestone: v1.1 Search, Auth & Admin
+
+**Goal:** Rozbudowa wyszukiwania o multi-tag filtering, pełne OIDC, dedykowana strona admin, persystencja sesji.
+
+**Target features:**
+- Przebudowa search — tag filter bar (multi-tag AND), main search szuka też w description
+- OIDC authentication — Authelia, Google, GitHub (konfigurowalny provider)
+- Admin panel jako osobna strona — auth settings, shelf settings, data export/import, active sessions
+- Redis session store — opcjonalny (env REDIS_URL), fallback in-memory
+- README.md — developer + user dokumentacja
+
 ### Out of Scope
 
-- Zarządzanie ilościami/inwentaryzacja — nie potrzebne w v1
-- Wiele półek — jedna półka wystarczy na start
-- Autentykacja/logowanie — aplikacja w sieci domowej, zaufane środowisko
+- Zarządzanie ilościami/inwentaryzacja — nie potrzebne, organizer nie śledzi stanów
+- Wiele półek — jedna półka wystarczy
 - Aplikacja mobilna — web responsywny wystarczy
+- OAuth2 bez OIDC — wymagamy OIDC discovery endpoint
 
 ## Context
 
@@ -76,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after Phase 8 completion*
+*Last updated: 2026-04-05 after v1.1 milestone start*

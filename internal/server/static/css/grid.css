@@ -103,6 +103,104 @@
   opacity: 0;
 }
 
+/* --- Tag Filter --- */
+
+.tag-filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.tag-filter-input-wrap {
+  position: relative;
+}
+
+.tag-filter-input-wrap input {
+  background: var(--bg-inset);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  padding: 7px 10px;
+  width: 100%;
+  color: var(--text);
+}
+
+.tag-filter-input-wrap input:focus {
+  background: var(--bg-raised);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.tag-filter-input-wrap input::placeholder {
+  color: var(--text-muted);
+}
+
+.tag-suggest-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  list-style: none;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  max-height: 160px;
+  overflow-y: auto;
+  margin-top: 2px;
+}
+
+.tag-suggest-list li {
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tag-suggest-list li:hover,
+.tag-suggest-list li.focused {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.tag-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  border: 1px solid var(--accent-glow);
+  border-radius: 12px;
+  line-height: 1.4;
+}
+
+.tag-filter-chip button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.tag-filter-chip button:hover {
+  opacity: 1;
+}
+
 /* --- Clear Button & Spinner --- */
 
 .search-clear-btn {

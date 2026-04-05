@@ -926,6 +926,10 @@ func (m *mockStore) SearchItems(ctx context.Context, query string) ([]model.Item
 	return m.searchItemsFn(ctx, query)
 }
 
+func (m *mockStore) SearchItemsByTags(ctx context.Context, query string, _ []string) ([]model.ItemResponse, error) {
+	return m.searchItemsFn(ctx, query)
+}
+
 func (m *mockStore) ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error) {
 	return m.listTagsFn(ctx, prefix)
 }
