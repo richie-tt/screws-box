@@ -1,0 +1,162 @@
+package session
+
+import (
+	"context"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func newTestSession(id, username string) *Session {
+	now := time.Now()
+	return &Session{
+		ID:           id,
+		Username:     username,
+		CSRFToken:    "csrf-" + id,
+		CreatedAt:    now,
+		LastActivity: now,
+	}
+}
+
+func TestMemoryStore_Create(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	sess := newTestSession("sess1", "alice")
+	err := m.Create(ctx, sess)
+	require.NoError(t, err)
+
+	got, err := m.Get(ctx, "sess1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "alice", got.Username)
+	assert.Equal(t, "csrf-sess1", got.CSRFToken)
+}
+
+func TestMemoryStore_Get_NotFound(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(m.Close)
+
+	got, err := m.Get(context.Background(), "nonexistent")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestMemoryStore_Delete(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	sess := newTestSession("sess1", "alice")
+	require.NoError(t, m.Create(ctx, sess))
+
+	err := m.Delete(ctx, "sess1")
+	require.NoError(t, err)
+
+	got, err := m.Get(ctx, "sess1")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestMemoryStore_Touch(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	sess := newTestSession("sess1", "alice")
+	sess.LastActivity = time.Now().Add(-10 * time.Minute)
+	require.NoError(t, m.Create(ctx, sess))
+
+	err := m.Touch(ctx, "sess1")
+	require.NoError(t, err)
+
+	got, err := m.Get(ctx, "sess1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.WithinDuration(t, time.Now(), got.LastActivity, 2*time.Second)
+}
+
+func TestMemoryStore_Expiry(t *testing.T) {
+	m := NewMemoryStore(50*time.Millisecond, 5*time.Minute)
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	sess := newTestSession("sess1", "alice")
+	require.NoError(t, m.Create(ctx, sess))
+
+	time.Sleep(100 * time.Millisecond)
+
+	got, err := m.Get(ctx, "sess1")
+	require.NoError(t, err)
+	assert.Nil(t, got, "expired session should return nil")
+}
+
+func TestMemoryStore_SlidingWindow(t *testing.T) {
+	m := NewMemoryStore(100*time.Millisecond, 5*time.Minute)
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	sess := newTestSession("sess1", "alice")
+	require.NoError(t, m.Create(ctx, sess))
+
+	// Touch at 60ms to reset the sliding window
+	time.Sleep(60 * time.Millisecond)
+	require.NoError(t, m.Touch(ctx, "sess1"))
+
+	// At 120ms from creation but only 60ms from last touch — should still be alive
+	time.Sleep(60 * time.Millisecond)
+	got, err := m.Get(ctx, "sess1")
+	require.NoError(t, err)
+	assert.NotNil(t, got, "session should survive due to Touch extending TTL")
+}
+
+func TestMemoryStore_BackgroundCleanup(t *testing.T) {
+	// Use very short TTL and cleanup interval
+	m := NewMemoryStore(50*time.Millisecond, 100*time.Millisecond)
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	sess := newTestSession("sess1", "alice")
+	require.NoError(t, m.Create(ctx, sess))
+
+	// Wait for expiry + cleanup sweep
+	time.Sleep(250 * time.Millisecond)
+
+	// Session should be removed by background cleanup
+	m.mu.RLock()
+	_, exists := m.sessions["sess1"]
+	m.mu.RUnlock()
+	assert.False(t, exists, "background cleanup should have removed expired session")
+}
+
+func TestMemoryStore_Close(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	m.Close()
+	// Should not panic on double close — but we only call once.
+	// Just verify no goroutine leak by completing the test.
+}
+
+func TestMemoryStore_ConcurrentAccess(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			id := "sess-" + time.Now().String() + "-" + string(rune('A'+n%26))
+			sess := newTestSession(id, "user")
+			_ = m.Create(ctx, sess)
+			_, _ = m.Get(ctx, id)
+			_ = m.Touch(ctx, id)
+			_ = m.Delete(ctx, id)
+		}(i)
+	}
+	wg.Wait()
+}
