@@ -23,9 +23,9 @@ Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elem
 - [ ] Dodawanie elementów do pojemnika przez kliknięcie w siatkę
 - [x] Element ma nazwę i wiele tagów/kategorii (np. "m6", "sprężynowa", "falista", "powiększona") — Validated in Phase 5-7
 - [ ] Jeden pojemnik może zawierać wiele różnych elementów
-- [x] Wyszukiwanie tekstowe po nazwie lub tagu — Validated in Phase 8: Search Backend (GET /api/search?q=... with name LIKE + exact tag match)
-- [x] Wyniki wyszukiwania jako lista z pozycjami (np. "3B") — Validated in Phase 8: Search Backend (ItemResponse includes container_label)
-- [ ] Wizualne podświetlenie pasujących pojemników na siatce podczas wyszukiwania
+- [x] Wyszukiwanie tekstowe po nazwie lub tagu — Validated in Phase 12: Search Enhancement (batch SQL with GROUP_CONCAT, name OR tag OR description, multi-tag AND filtering)
+- [x] Wyniki wyszukiwania jako lista z pozycjami (np. "3B") — Validated in Phase 12: Search Enhancement (unified dropdown with matched_on highlights, total_count)
+- [x] Wizualne podświetlenie pasujących pojemników na siatce podczas wyszukiwania — Validated in Phase 12: Search Enhancement (grid highlights with match count badges)
 ## Current Milestone: v1.1 Search, Auth & Admin
 
 **Goal:** Rozbudowa wyszukiwania o multi-tag filtering, pełne OIDC, dedykowana strona admin, persystencja sesji.
