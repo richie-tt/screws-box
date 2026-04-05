@@ -4,16 +4,29 @@ import (
 	"io/fs"
 	"net/http"
 
+	"screws-box/internal/session"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// NewRouter creates the chi router with all routes.
-func NewRouter(s StoreService) http.Handler {
+// Server holds application dependencies for HTTP handlers.
+type Server struct {
+	store    StoreService
+	sessions *session.Manager
+}
+
+// NewServer creates a Server with the given dependencies.
+func NewServer(store StoreService, sessions *session.Manager) *Server {
+	return &Server{store: store, sessions: sessions}
+}
+
+// Router creates the chi router with all routes.
+func (srv *Server) Router() http.Handler {
 	r := chi.NewRouter()
 
 	// Healthcheck — outside logging middleware so K8s probes don't flood logs.
-	r.Get("/healthz", handleHealthz(s))
+	r.Get("/healthz", srv.handleHealthz())
 
 	// All application routes with full middleware stack.
 	r.Group(func(r chi.Router) {
@@ -24,37 +37,37 @@ func NewRouter(s StoreService) http.Handler {
 		r.Use(newRateLimitAPI())
 
 		// Public routes (no auth required)
-		r.Get("/login", handleLoginPage(s))
-		r.With(newRateLimitLogin()).Post("/login", handleLoginPost(s))
-		r.Get("/logout", handleLogout())
+		r.Get("/login", srv.handleLoginPage())
+		r.With(newRateLimitLogin()).Post("/login", srv.handleLoginPost())
+		r.Get("/logout", srv.handleLogout())
 		r.Handle("/static/*", http.StripPrefix("/static/",
 			http.FileServerFS(mustSubFS(ContentFS, "static"))))
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
-			r.Use(authMiddleware(s))
-			r.Use(csrfProtect(s))
+			r.Use(srv.authMiddleware())
+			r.Use(srv.csrfProtect())
 
-			r.Get("/", handleGrid(s))
+			r.Get("/", srv.handleGrid())
 
 			r.Route("/api", func(r chi.Router) {
 				r.Route("/items", func(r chi.Router) {
-					r.Get("/", handleListItems(s))
-					r.Post("/", handleCreateItem(s))
+					r.Get("/", srv.handleListItems())
+					r.Post("/", srv.handleCreateItem())
 					r.Route("/{itemID}", func(r chi.Router) {
-						r.Get("/", handleGetItem(s))
-						r.Put("/", handleUpdateItem(s))
-						r.Delete("/", handleDeleteItem(s))
-						r.Post("/tags", handleAddTag(s))
-						r.Delete("/tags/{tagName}", handleRemoveTag(s))
+						r.Get("/", srv.handleGetItem())
+						r.Put("/", srv.handleUpdateItem())
+						r.Delete("/", srv.handleDeleteItem())
+						r.Post("/tags", srv.handleAddTag())
+						r.Delete("/tags/{tagName}", srv.handleRemoveTag())
 					})
 				})
-				r.Get("/tags", handleListTags(s))
-				r.Get("/search", handleSearch(s))
-				r.Get("/containers/{containerID}/items", handleListContainerItems(s))
-				r.Put("/shelf/resize", handleResizeShelf(s))
-				r.Get("/shelf/auth", handleGetAuthSettings(s))
-				r.Put("/shelf/auth", handleUpdateAuthSettings(s))
+				r.Get("/tags", srv.handleListTags())
+				r.Get("/search", srv.handleSearch())
+				r.Get("/containers/{containerID}/items", srv.handleListContainerItems())
+				r.Put("/shelf/resize", srv.handleResizeShelf())
+				r.Get("/shelf/auth", srv.handleGetAuthSettings())
+				r.Put("/shelf/auth", srv.handleUpdateAuthSettings())
 			})
 		})
 	})
