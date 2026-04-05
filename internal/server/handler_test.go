@@ -89,8 +89,14 @@ func TestHandleCreateItemValidation(t *testing.T) {
 			wantError: "at least one tag",
 		},
 		{
-			name:      "too many tags",
-			body:      fmt.Sprintf(`{"name":"bolt","container_id":1,"tags":[%s]}`, func() string { parts := make([]string, 21); for i := range parts { parts[i] = fmt.Sprintf(`"t%d"`, i) }; return strings.Join(parts, ",") }()),
+			name: "too many tags",
+			body: fmt.Sprintf(`{"name":"bolt","container_id":1,"tags":[%s]}`, func() string {
+				parts := make([]string, 21)
+				for i := range parts {
+					parts[i] = fmt.Sprintf(`"t%d"`, i)
+				}
+				return strings.Join(parts, ",")
+			}()),
 			wantError: "at most 20 tags",
 		},
 		{
@@ -873,9 +879,9 @@ type mockStore struct {
 	listTagsFn             func(ctx context.Context, prefix string) ([]model.TagResponse, error)
 	resizeShelfFn          func(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	updateShelfNameFn      func(ctx context.Context, name string) error
-	getAuthSettingsFn        func(ctx context.Context) (*model.AuthSettings, error)
-	updateAuthSettingsFn     func(ctx context.Context, settings *model.AuthSettings) error
-	validateCredentialsFn    func(ctx context.Context, username, password string) (bool, error)
+	getAuthSettingsFn      func(ctx context.Context) (*model.AuthSettings, error)
+	updateAuthSettingsFn   func(ctx context.Context, settings *model.AuthSettings) error
+	validateCredentialsFn  func(ctx context.Context, username, password string) (bool, error)
 }
 
 func (m *mockStore) GetGridData() (*model.GridData, error) { return m.getGridDataFn() }
@@ -928,10 +934,14 @@ func (m *mockStore) ValidateCredentials(ctx context.Context, username, password 
 func errStore() *mockStore {
 	dbErr := fmt.Errorf("database error")
 	return &mockStore{
-		getGridDataFn:          func() (*model.GridData, error) { return nil, dbErr },
-		createItemFn:           func(_ context.Context, _ int64, _ string, _ *string, _ []string) (*model.ItemResponse, error) { return nil, dbErr },
-		getItemFn:              func(_ context.Context, _ int64) (*model.ItemResponse, error) { return nil, dbErr },
-		updateItemFn:           func(_ context.Context, _ int64, _ string, _ *string, _ int64) (*model.ItemResponse, error) { return nil, dbErr },
+		getGridDataFn: func() (*model.GridData, error) { return nil, dbErr },
+		createItemFn: func(_ context.Context, _ int64, _ string, _ *string, _ []string) (*model.ItemResponse, error) {
+			return nil, dbErr
+		},
+		getItemFn: func(_ context.Context, _ int64) (*model.ItemResponse, error) { return nil, dbErr },
+		updateItemFn: func(_ context.Context, _ int64, _ string, _ *string, _ int64) (*model.ItemResponse, error) {
+			return nil, dbErr
+		},
 		deleteItemFn:           func(_ context.Context, _ int64) error { return dbErr },
 		addTagToItemFn:         func(_ context.Context, _ int64, _ string) (*model.ItemResponse, error) { return nil, dbErr },
 		removeTagFromItemFn:    func(_ context.Context, _ int64, _ string) error { return dbErr },

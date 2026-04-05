@@ -45,14 +45,14 @@ type Tag struct {
 
 // GridData is the view model for the grid template.
 type GridData struct {
-	ShelfName      string
-	Rows           int
-	Cols           int
-	ColNumbers     []int
-	Grid           []Row
-	Error          string
-	AuthEnabled    bool
-	AuthUser       string
+	ShelfName       string
+	Rows            int
+	Cols            int
+	ColNumbers      []int
+	Grid            []Row
+	Error           string
+	AuthEnabled     bool
+	AuthUser        string
 	AuthHasPassword bool
 }
 
