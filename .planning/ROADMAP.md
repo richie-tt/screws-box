@@ -125,7 +125,10 @@ Plans:
   2. Sessions expire after a configurable TTL (default 24h) -- a user who logs in and waits beyond TTL must log in again
   3. Session expiry uses sliding window -- active users are not kicked out mid-use
   4. The session store is injected via interface, not hardcoded -- visible in code structure (`internal/session/` package with `Store` interface)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 11-01-PLAN.md — Create session package (Store interface, Session struct, MemoryStore, Manager)
+- [ ] 11-02-PLAN.md — Wire session package into server and parse SESSION_TTL
 
 ### Phase 12: Search Enhancement
 **Goal**: Users can narrow search results by combining multiple tag filters with the text search, and search also covers item descriptions
@@ -216,7 +219,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 8. Search Backend | v1.0 | 1/1 | Complete | 2026-04-03 |
 | 9. Search Frontend | v1.0 | 2/2 | Complete | 2026-04-03 |
 | 10. Resilience | v1.0 | 2/2 | Complete | 2026-04-03 |
-| 11. Session Store Interface | v1.1 | 0/0 | Not started | - |
+| 11. Session Store Interface | v1.1 | 0/2 | Planning | - |
 | 12. Search Enhancement | v1.1 | 0/0 | Not started | - |
 | 13. Admin Panel Shell | v1.1 | 0/0 | Not started | - |
 | 14. OIDC Authentication | v1.1 | 0/0 | Not started | - |
