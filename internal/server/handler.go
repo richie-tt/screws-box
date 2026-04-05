@@ -36,16 +36,26 @@ func generateToken() string {
 	return hex.EncodeToString(b)
 }
 
-func createSession(w http.ResponseWriter, username string) {
+// isSecure returns true if the request arrived over HTTPS.
+func isSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	// Behind reverse proxy with X-Forwarded-Proto header.
+	return r.Header.Get("X-Forwarded-Proto") == "https"
+}
+
+func createSession(w http.ResponseWriter, r *http.Request, username string) {
 	sessionToken := generateToken()
 	csrfToken := generateToken()
+	secure := isSecure(r)
 	sessions.Store(sessionToken, sessionData{username: username, csrfToken: csrfToken})
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    sessionToken,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 	// CSRF cookie — separate value, readable by JS for double-submit pattern.
@@ -54,12 +64,13 @@ func createSession(w http.ResponseWriter, username string) {
 		Value:    csrfToken,
 		Path:     "/",
 		HttpOnly: false,
-		Secure:   true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
 func destroySession(w http.ResponseWriter, r *http.Request) {
+	secure := isSecure(r)
 	c, err := r.Cookie(cookieName)
 	if err == nil {
 		sessions.Delete(c.Value)
@@ -70,14 +81,14 @@ func destroySession(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   secure,
 	})
 	http.SetCookie(w, &http.Cookie{
 		Name:   csrfCookieName,
 		Value:  "",
 		Path:   "/",
 		MaxAge: -1,
-		Secure: true,
+		Secure: secure,
 	})
 }
 
@@ -611,7 +622,7 @@ func handleLoginPost(s StoreService) http.HandlerFunc {
 			renderLogin(w, loginData{Error: "Invalid username or password."})
 			return
 		}
-		createSession(w, username)
+		createSession(w, r, username)
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
