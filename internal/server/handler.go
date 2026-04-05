@@ -70,26 +70,30 @@ func createSession(w http.ResponseWriter, r *http.Request, username string) {
 }
 
 func destroySession(w http.ResponseWriter, r *http.Request) {
-	secure := isSecure(r)
 	c, err := r.Cookie(cookieName)
 	if err == nil {
 		sessions.Delete(c.Value)
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   secure,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:   csrfCookieName,
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-		Secure: secure,
-	})
+	// Clear cookies with both Secure variants so stale Secure cookies
+	// from a previous deployment (when Secure was hardcoded true) get
+	// removed regardless of whether the current request is HTTP or HTTPS.
+	for _, sec := range []bool{false, true} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     cookieName,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   sec,
+		})
+		http.SetCookie(w, &http.Cookie{
+			Name:   csrfCookieName,
+			Value:  "",
+			Path:   "/",
+			MaxAge: -1,
+			Secure: sec,
+		})
+	}
 }
 
 func getSessionUser(r *http.Request) string {
