@@ -8,18 +8,17 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"screws-box/internal/model"
 	"strings"
 	"time"
 
-	"screws-box/internal/model"
-
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // register SQLite driver
 )
 
 // hashPassword hashes a password with a random salt using SHA-256.
 // Format: "sha256:<hex-salt>:<hex-hash>"
 func hashPassword(password string) string {
-	salt := make([]byte, 16)
+	salt := make([]byte, 16, 16+len(password))
 	rand.Read(salt)
 	h := sha256.Sum256(append(salt, []byte(password)...))
 	return "sha256:" + hex.EncodeToString(salt) + ":" + hex.EncodeToString(h[:])
@@ -93,6 +92,15 @@ var migrations = []string{
 	`ALTER TABLE shelf ADD COLUMN auth_pass TEXT NOT NULL DEFAULT ''`,
 }
 
+// deferRollback is used with defer to rollback a transaction.
+// After a successful Commit, Rollback returns sql.ErrTxDone which is expected.
+// Any other error indicates a real problem and gets logged.
+func deferRollback(tx *sql.Tx) {
+	if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+		slog.Error("tx rollback failed", "err", err)
+	}
+}
+
 // Store wraps the SQLite database connection.
 type Store struct {
 	db *sql.DB
@@ -101,6 +109,11 @@ type Store struct {
 // DB returns the underlying *sql.DB for direct queries in tests.
 func (s *Store) DB() *sql.DB {
 	return s.db
+}
+
+// Ping verifies the database connection is alive.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.db.PingContext(ctx)
 }
 
 // Open opens the SQLite database at dbPath, configures pragmas,
@@ -147,7 +160,7 @@ func (s *Store) createSchema() error {
 	if err != nil {
 		return fmt.Errorf("begin schema tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer deferRollback(tx)
 
 	for _, ddl := range schemaDDL {
 		if _, err := tx.Exec(ddl); err != nil {
@@ -160,7 +173,7 @@ func (s *Store) createSchema() error {
 
 	// Run migrations (idempotent ALTER TABLE statements).
 	for _, m := range migrations {
-		s.db.Exec(m) // ignore "duplicate column" errors
+		_, _ = s.db.Exec(m) // ignore "duplicate column" errors
 	}
 	return nil
 }
@@ -178,7 +191,7 @@ func (s *Store) seedDefaultShelf() error {
 	if err != nil {
 		return fmt.Errorf("begin seed tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer deferRollback(tx)
 
 	const (
 		defaultName = "My Organizer"
@@ -305,7 +318,7 @@ func (s *Store) CreateItem(ctx context.Context, containerID int64, name string, 
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer deferRollback(tx)
 
 	var cID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM container WHERE id = ?", containerID).Scan(&cID)
@@ -406,7 +419,7 @@ func (s *Store) UpdateItem(ctx context.Context, id int64, name string, descripti
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer deferRollback(tx)
 
 	var itemID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM item WHERE id = ?", id).Scan(&itemID)
@@ -462,7 +475,7 @@ func (s *Store) AddTagToItem(ctx context.Context, itemID int64, tagName string) 
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer deferRollback(tx)
 
 	var iID int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM item WHERE id = ?", itemID).Scan(&iID)
@@ -674,7 +687,7 @@ func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*model.R
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer deferRollback(tx)
 
 	var shelfID int64
 	var curRows, curCols int

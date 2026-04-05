@@ -126,7 +126,7 @@ type ResizeResult struct {
 	Cols               int                 `json:"cols"`
 	Blocked            bool                `json:"blocked,omitempty"`
 	Message            string              `json:"message,omitempty"`
-	AffectedContainers []AffectedContainer `json:"affected,omitempty"`
+	AffectedContainers []AffectedContainer `json:"affected,omitempty"` //nolint:tagliatelle // intentionally shorter JSON key
 	ContainersAdded    int                 `json:"containers_added,omitempty"`
 	ContainersRemoved  int                 `json:"containers_removed,omitempty"`
 }
@@ -144,7 +144,7 @@ type AffectedContainer struct {
 // Example: LabelFor(3, 2) returns "3B".
 // Label is NEVER stored in DB, always computed by this function.
 func LabelFor(col, row int) string {
-	return fmt.Sprintf("%d%c", col, 'A'+rune(row-1))
+	return fmt.Sprintf("%d%c", col, 'A'+rune(row-1)) //nolint:gosec // G115: row is bounded 1-26, no overflow risk
 }
 
 // Dedup returns a new slice with duplicate strings removed, preserving order.

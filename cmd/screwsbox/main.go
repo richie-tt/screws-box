@@ -7,11 +7,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
-	"time"
-
 	"screws-box/internal/server"
 	"screws-box/internal/store"
+	"syscall"
+	"time"
 )
 
 func main() {
@@ -81,12 +80,13 @@ func run() error {
 	addr := "0.0.0.0:" + port
 
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: server.NewRouter(&s),
+		Addr:              addr,
+		Handler:           server.NewRouter(&s),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	go func() {
-		slog.Info("server starting", "addr", addr)
+		slog.Info("server starting", "addr", addr) //nolint:gosec // G706: structured logging, value is a key-value pair not interpolated
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "err", err)
 			os.Exit(1)

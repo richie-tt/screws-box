@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"testing"
-
 	"screws-box/internal/model"
+	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -135,7 +133,7 @@ func TestGetGridDataItemCounts(t *testing.T) {
 	err := s.db.QueryRow("SELECT id FROM container WHERE col = 3 AND row = 2").Scan(&containerID)
 	require.NoError(t, err, "find container")
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, err := s.db.Exec("INSERT INTO item (container_id, name) VALUES (?, ?)",
 			containerID, fmt.Sprintf("Item %d", i+1))
 		require.NoError(t, err, "insert item %d", i+1)
@@ -158,7 +156,7 @@ func TestGetGridDataContainerIDs(t *testing.T) {
 	seen := make(map[int64]bool)
 	for ri, row := range data.Grid {
 		for ci, cell := range row.Cells {
-			assert.Greater(t, cell.ContainerID, int64(0), "Grid[%d].Cells[%d].ContainerID", ri, ci)
+			assert.Positive(t, cell.ContainerID, "Grid[%d].Cells[%d].ContainerID", ri, ci)
 			seen[cell.ContainerID] = true
 		}
 	}
@@ -181,7 +179,7 @@ func TestGetGridDataCustomDimensions(t *testing.T) {
 	require.NoError(t, err, "delete containers")
 
 	var shelfID int64
-	s.db.QueryRow("SELECT id FROM shelf LIMIT 1").Scan(&shelfID)
+	require.NoError(t, s.db.QueryRow("SELECT id FROM shelf LIMIT 1").Scan(&shelfID))
 	for col := 1; col <= 3; col++ {
 		for row := 1; row <= 2; row++ {
 			_, err := s.db.Exec(
@@ -214,13 +212,13 @@ func TestCascadeDeleteContainerRemovesItems(t *testing.T) {
 	require.NoError(t, err, "insert item")
 
 	var itemCount int
-	s.db.QueryRow("SELECT COUNT(*) FROM item WHERE container_id = ?", containerID).Scan(&itemCount)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item WHERE container_id = ?", containerID).Scan(&itemCount))
 	require.Equal(t, 1, itemCount, "expected 1 item before delete")
 
 	_, err = s.db.Exec("DELETE FROM container WHERE id = ?", containerID)
 	require.NoError(t, err, "delete container")
 
-	s.db.QueryRow("SELECT COUNT(*) FROM item WHERE container_id = ?", containerID).Scan(&itemCount)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item WHERE container_id = ?", containerID).Scan(&itemCount))
 	assert.Equal(t, 0, itemCount)
 }
 
@@ -228,7 +226,7 @@ func TestCascadeDeleteItemRemovesItemTags(t *testing.T) {
 	s := openTestStore(t)
 
 	var containerID int64
-	s.db.QueryRow("SELECT id FROM container LIMIT 1").Scan(&containerID)
+	require.NoError(t, s.db.QueryRow("SELECT id FROM container LIMIT 1").Scan(&containerID))
 
 	res, err := s.db.Exec("INSERT INTO tag (name) VALUES (?)", "m6")
 	require.NoError(t, err, "insert tag")
@@ -245,13 +243,13 @@ func TestCascadeDeleteItemRemovesItemTags(t *testing.T) {
 	require.NoError(t, err, "insert item_tag")
 
 	var linkCount int
-	s.db.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", itemID).Scan(&linkCount)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", itemID).Scan(&linkCount))
 	require.Equal(t, 1, linkCount, "expected 1 item_tag before delete")
 
 	_, err = s.db.Exec("DELETE FROM item WHERE id = ?", itemID)
 	require.NoError(t, err, "delete item")
 
-	s.db.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", itemID).Scan(&linkCount)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", itemID).Scan(&linkCount))
 	assert.Equal(t, 0, linkCount)
 }
 
@@ -300,7 +298,7 @@ func TestCreateItemWithTags(t *testing.T) {
 	item, err := s.CreateItem(ctx, containerID, "M6 bolt", &desc, []string{"m6", "bolt"})
 	require.NoError(t, err)
 
-	assert.Greater(t, item.ID, int64(0))
+	assert.Positive(t, item.ID)
 	assert.Equal(t, "M6 bolt", item.Name)
 	require.NotNil(t, item.Description)
 	assert.Equal(t, "DIN 933", *item.Description)
@@ -309,7 +307,7 @@ func TestCreateItemWithTags(t *testing.T) {
 		assert.Equal(t, "bolt", item.Tags[0])
 		assert.Equal(t, "m6", item.Tags[1])
 	}
-	assert.Regexp(t, regexp.MustCompile(`^\d+[A-Z]$`), item.ContainerLabel)
+	assert.Regexp(t, `^\d+[A-Z]$`, item.ContainerLabel)
 	assert.NotEmpty(t, item.CreatedAt)
 	assert.NotEmpty(t, item.UpdatedAt)
 }
@@ -513,7 +511,7 @@ func TestListItemsByContainer(t *testing.T) {
 	result, err := s.ListItemsByContainer(ctx, containerID)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Regexp(t, regexp.MustCompile(`^\d+[A-Z]$`), result.Label)
+	assert.Regexp(t, `^\d+[A-Z]$`, result.Label)
 	assert.Len(t, result.Items, 2)
 }
 
@@ -755,7 +753,7 @@ func TestResizeShelf_BlockedWhenItemsExist(t *testing.T) {
 	assert.True(t, found, "AffectedContainers missing label 10E, got: %+v", result.AffectedContainers)
 
 	var rows, cols int
-	s.db.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols)
+	require.NoError(t, s.db.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols))
 	assert.Equal(t, 5, rows)
 	assert.Equal(t, 10, cols)
 }
@@ -801,11 +799,11 @@ func TestResizeShelf_ExpandCreatesContainers(t *testing.T) {
 	}
 
 	var total int
-	s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total))
 	assert.Equal(t, 84, total)
 
 	var rows, cols int
-	s.db.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols)
+	require.NoError(t, s.db.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols))
 	assert.Equal(t, 7, rows)
 	assert.Equal(t, 12, cols)
 }
@@ -821,11 +819,11 @@ func TestResizeShelf_ShrinkDeletesEmptyContainers(t *testing.T) {
 	assert.Equal(t, 5, result.Cols)
 
 	var outOfBounds int
-	s.db.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 5").Scan(&outOfBounds)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 5").Scan(&outOfBounds))
 	assert.Equal(t, 0, outOfBounds)
 
 	var total int
-	s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total))
 	assert.Equal(t, 15, total)
 }
 
@@ -840,7 +838,7 @@ func TestResizeShelf_SameSize(t *testing.T) {
 	assert.Equal(t, 10, result.Cols)
 
 	var total int
-	s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total))
 	assert.Equal(t, 50, total)
 }
 
@@ -857,11 +855,11 @@ func TestResizeShelf_ShrinkWithMixedOccupancy(t *testing.T) {
 	assert.Equal(t, 3, result.Cols)
 
 	var outOfBounds int
-	s.db.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 3").Scan(&outOfBounds)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 3").Scan(&outOfBounds))
 	assert.Equal(t, 0, outOfBounds)
 
 	var itemCount int
-	s.db.QueryRow("SELECT COUNT(*) FROM item").Scan(&itemCount)
+	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item").Scan(&itemCount))
 	assert.Equal(t, 1, itemCount)
 }
 
