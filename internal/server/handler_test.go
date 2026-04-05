@@ -390,10 +390,10 @@ func TestHandleSearchByName(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
 
-	var resp map[string][]model.ItemResponse
+	var resp model.SearchResponse
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	require.Len(t, resp["results"], 1)
-	assert.Equal(t, "Test Bolt", resp["results"][0].Name)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, "Test Bolt", resp.Results[0].Name)
 }
 
 func TestHandleSearchByTag(t *testing.T) {
@@ -406,9 +406,9 @@ func TestHandleSearchByTag(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
 
-	var resp map[string][]model.ItemResponse
+	var resp model.SearchResponse
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	require.Len(t, resp["results"], 1)
+	require.Len(t, resp.Results, 1)
 }
 
 func TestHandleSearchEmpty(t *testing.T) {
@@ -420,9 +420,9 @@ func TestHandleSearchEmpty(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
 
-	var resp map[string][]model.ItemResponse
+	var resp model.SearchResponse
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	assert.Empty(t, resp["results"])
+	assert.Empty(t, resp.Results)
 }
 
 func TestHandleSearchMissingParam(t *testing.T) {
@@ -434,9 +434,9 @@ func TestHandleSearchMissingParam(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
 
-	var resp map[string][]model.ItemResponse
+	var resp model.SearchResponse
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	assert.Empty(t, resp["results"])
+	assert.Empty(t, resp.Results)
 }
 
 func TestHandleSearchResponseShape(t *testing.T) {
@@ -480,10 +480,10 @@ func TestHandleSearchCaseInsensitive(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 
-	var resp map[string][]model.ItemResponse
+	var resp model.SearchResponse
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	require.Len(t, resp["results"], 1)
-	assert.Equal(t, "BOLT", resp["results"][0].Name)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, "BOLT", resp.Results[0].Name)
 }
 
 func TestHandleCreateItemDescriptionOptional(t *testing.T) {
@@ -882,6 +882,7 @@ type mockStore struct {
 	listItemsByContainerFn func(ctx context.Context, containerID int64) (*model.ContainerWithItems, error)
 	listAllItemsFn         func(ctx context.Context) ([]model.ItemResponse, error)
 	searchItemsFn          func(ctx context.Context, query string) ([]model.ItemResponse, error)
+	searchItemsBatchFn     func(ctx context.Context, query string, tags []string) (*model.SearchResponse, error)
 	listTagsFn             func(ctx context.Context, prefix string) ([]model.TagResponse, error)
 	resizeShelfFn          func(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	updateShelfNameFn      func(ctx context.Context, name string) error
@@ -936,6 +937,20 @@ func (m *mockStore) SearchItems(ctx context.Context, query string) ([]model.Item
 
 func (m *mockStore) SearchItemsByTags(ctx context.Context, query string, _ []string) ([]model.ItemResponse, error) {
 	return m.searchItemsFn(ctx, query)
+}
+
+func (m *mockStore) SearchItemsBatch(_ context.Context, _ string, _ []string) (*model.SearchResponse, error) {
+	if m.searchItemsBatchFn != nil {
+		return m.searchItemsBatchFn(context.Background(), "", nil)
+	}
+	if m.searchItemsFn != nil {
+		// Fallback for error path testing
+		_, err := m.searchItemsFn(context.Background(), "")
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &model.SearchResponse{Results: []model.SearchResult{}, TotalCount: 0}, nil
 }
 
 func (m *mockStore) ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error) {
@@ -1198,4 +1213,89 @@ func TestHandleUpdateAuthSettingsStoreError(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// --- SearchItemsBatch handler tests ---
+
+func TestSearchMatchedOn(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	cid, err := s.GetContainerIDByPosition(1, 1)
+	require.NoError(t, err)
+	_, err = s.CreateItem(ctx, cid, "M6 Bolt", nil, []string{"m6", "bolt"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/search?q=bolt", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp model.SearchResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	require.Len(t, resp.Results, 1)
+	assert.Contains(t, resp.Results[0].MatchedOn, "name")
+	assert.Contains(t, resp.Results[0].MatchedOn, "tag")
+}
+
+func TestSearchTotalCount(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	cid, err := s.GetContainerIDByPosition(1, 1)
+	require.NoError(t, err)
+	for i := range 3 {
+		_, err := s.CreateItem(ctx, cid, fmt.Sprintf("Bolt %d", i), nil, []string{"m6"})
+		require.NoError(t, err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/search?q=bolt", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp model.SearchResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, 3, resp.TotalCount)
+	assert.Len(t, resp.Results, 3)
+}
+
+func TestSearchEmptyParams(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/search", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp model.SearchResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Empty(t, resp.Results)
+	assert.Equal(t, 0, resp.TotalCount)
+}
+
+func TestSearchTagsParam(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	cid, err := s.GetContainerIDByPosition(1, 1)
+	require.NoError(t, err)
+	_, err = s.CreateItem(ctx, cid, "Socket Head", nil, []string{"m6", "din912"})
+	require.NoError(t, err)
+	_, err = s.CreateItem(ctx, cid, "Hex Head", nil, []string{"m6", "din933"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/search?tags=m6,din912", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp model.SearchResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, "Socket Head", resp.Results[0].Name)
 }
