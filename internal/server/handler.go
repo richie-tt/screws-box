@@ -36,16 +36,26 @@ func generateToken() string {
 	return hex.EncodeToString(b)
 }
 
-func createSession(w http.ResponseWriter, username string) {
+// isSecure returns true if the request arrived over HTTPS.
+func isSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	// Behind reverse proxy with X-Forwarded-Proto header.
+	return r.Header.Get("X-Forwarded-Proto") == "https"
+}
+
+func createSession(w http.ResponseWriter, r *http.Request, username string) {
 	sessionToken := generateToken()
 	csrfToken := generateToken()
+	secure := isSecure(r)
 	sessions.Store(sessionToken, sessionData{username: username, csrfToken: csrfToken})
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    sessionToken,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 	// CSRF cookie — separate value, readable by JS for double-submit pattern.
@@ -54,7 +64,7 @@ func createSession(w http.ResponseWriter, username string) {
 		Value:    csrfToken,
 		Path:     "/",
 		HttpOnly: false,
-		Secure:   true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -64,21 +74,26 @@ func destroySession(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		sessions.Delete(c.Value)
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   true,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:   csrfCookieName,
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-		Secure: true,
-	})
+	// Clear cookies with both Secure variants so stale Secure cookies
+	// from a previous deployment (when Secure was hardcoded true) get
+	// removed regardless of whether the current request is HTTP or HTTPS.
+	for _, sec := range []bool{false, true} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     cookieName,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   sec,
+		})
+		http.SetCookie(w, &http.Cookie{
+			Name:   csrfCookieName,
+			Value:  "",
+			Path:   "/",
+			MaxAge: -1,
+			Secure: sec,
+		})
+	}
 }
 
 func getSessionUser(r *http.Request) string {
@@ -117,6 +132,7 @@ type StoreService interface {
 	ListItemsByContainer(ctx context.Context, containerID int64) (*model.ContainerWithItems, error)
 	ListAllItems(ctx context.Context) ([]model.ItemResponse, error)
 	SearchItems(ctx context.Context, query string) ([]model.ItemResponse, error)
+	SearchItemsByTags(ctx context.Context, query string, tags []string) ([]model.ItemResponse, error)
 	ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error)
 	ResizeShelf(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	UpdateShelfName(ctx context.Context, name string) error
@@ -497,12 +513,31 @@ func handleListItems(s StoreService) http.HandlerFunc {
 func handleSearch(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-		if q == "" {
+		tagParam := strings.TrimSpace(r.URL.Query().Get("tags"))
+
+		var tags []string
+		if tagParam != "" {
+			for _, t := range strings.Split(tagParam, ",") {
+				t = strings.ToLower(strings.TrimSpace(t))
+				if t != "" {
+					tags = append(tags, t)
+				}
+			}
+		}
+
+		// When tags are active but no text query, search by tags only.
+		if q == "" && len(tags) == 0 {
 			writeJSON(w, http.StatusOK, map[string][]model.ItemResponse{"results": {}})
 			return
 		}
 
-		items, err := s.SearchItems(r.Context(), q)
+		var items []model.ItemResponse
+		var err error
+		if len(tags) > 0 {
+			items, err = s.SearchItemsByTags(r.Context(), q, tags)
+		} else {
+			items, err = s.SearchItems(r.Context(), q)
+		}
 		if err != nil {
 			slog.Error("search items", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -591,7 +626,7 @@ func handleLoginPost(s StoreService) http.HandlerFunc {
 			renderLogin(w, loginData{Error: "Invalid username or password."})
 			return
 		}
-		createSession(w, username)
+		createSession(w, r, username)
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
