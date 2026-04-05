@@ -27,6 +27,7 @@ type StoreService interface {
 	ListAllItems(ctx context.Context) ([]model.ItemResponse, error)
 	SearchItems(ctx context.Context, query string) ([]model.ItemResponse, error)
 	SearchItemsByTags(ctx context.Context, query string, tags []string) ([]model.ItemResponse, error)
+	SearchItemsBatch(ctx context.Context, query string, tags []string) (*model.SearchResponse, error)
 	ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error)
 	ResizeShelf(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	UpdateShelfName(ctx context.Context, name string) error
@@ -419,26 +420,20 @@ func (srv *Server) handleSearch() http.HandlerFunc {
 			}
 		}
 
-		// When tags are active but no text query, search by tags only.
+		// When no query and no tags, return empty response.
 		if q == "" && len(tags) == 0 {
-			writeJSON(w, http.StatusOK, map[string][]model.ItemResponse{"results": {}})
+			writeJSON(w, http.StatusOK, &model.SearchResponse{Results: []model.SearchResult{}, TotalCount: 0})
 			return
 		}
 
-		var items []model.ItemResponse
-		var err error
-		if len(tags) > 0 {
-			items, err = srv.store.SearchItemsByTags(r.Context(), q, tags)
-		} else {
-			items, err = srv.store.SearchItems(r.Context(), q)
-		}
+		result, err := srv.store.SearchItemsBatch(r.Context(), q, tags)
 		if err != nil {
 			slog.Error("search items", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"results": items})
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 
