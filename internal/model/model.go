@@ -93,6 +93,18 @@ type ItemResponse struct {
 	UpdatedAt      string   `json:"updated_at"`
 }
 
+// SearchResult wraps ItemResponse with match metadata for highlighting.
+type SearchResult struct {
+	ItemResponse
+	MatchedOn []string `json:"matched_on"`
+}
+
+// SearchResponse is the API envelope for search results.
+type SearchResponse struct {
+	Results    []SearchResult `json:"results"`
+	TotalCount int            `json:"total_count"`
+}
+
 // TagResponse is the API-ready representation of a tag.
 type TagResponse struct {
 	ID        int64  `json:"id"`

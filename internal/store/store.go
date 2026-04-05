@@ -771,6 +771,232 @@ func (s *Store) SearchItemsByTags(ctx context.Context, query string, tags []stri
 	return items, nil
 }
 
+// SearchItemsBatch finds items matching a text query and/or tag filters in a single SQL round-trip.
+// When tags is empty, matches name OR exact tag OR description (case-insensitive).
+// When tags is non-empty, returns items having ALL specified tags (AND logic);
+// text query filters on name+description only (tags excluded from text search per D-09).
+// Results are capped at 50; TotalCount reflects the untruncated count.
+func (s *Store) SearchItemsBatch(ctx context.Context, query string, tags []string) (*model.SearchResponse, error) {
+	if query == "" && len(tags) == 0 {
+		return &model.SearchResponse{Results: []model.SearchResult{}, TotalCount: 0}, nil
+	}
+
+	escaper := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	lowerQuery := strings.ToLower(query)
+	likePattern := "%" + escaper.Replace(lowerQuery) + "%"
+	tagsActive := len(tags) > 0
+
+	var sqlStr string
+	var args []any
+
+	if !tagsActive {
+		// Path 1: No tag filters — match name OR exact tag OR description
+		sqlStr = `
+			SELECT i.id, i.container_id, i.name, i.description,
+			       c.col, c.row, i.created_at, i.updated_at,
+			       GROUP_CONCAT(t.name, '|') AS tag_list
+			FROM item i
+			JOIN container c ON c.id = i.container_id
+			LEFT JOIN item_tag it ON it.item_id = i.id
+			LEFT JOIN tag t ON t.id = it.tag_id
+			WHERE LOWER(i.name) LIKE ? ESCAPE '\'
+			   OR t.name = ?
+			   OR LOWER(COALESCE(i.description, '')) LIKE ? ESCAPE '\'
+			GROUP BY i.id, i.container_id, i.name, i.description,
+			         c.col, c.row, i.created_at, i.updated_at
+			ORDER BY c.col ASC, c.row ASC
+			LIMIT 51`
+		args = []any{likePattern, lowerQuery, likePattern}
+	} else {
+		// Path 2: With tag filters — AND logic on tags
+		placeholders := make([]string, len(tags))
+		args = make([]any, 0, len(tags)+2)
+		for i, tag := range tags {
+			placeholders[i] = "?"
+			args = append(args, strings.ToLower(tag))
+		}
+
+		sqlStr = fmt.Sprintf(`
+			SELECT i.id, i.container_id, i.name, i.description,
+			       c.col, c.row, i.created_at, i.updated_at,
+			       (SELECT GROUP_CONCAT(t2.name, '|') FROM item_tag it2 JOIN tag t2 ON t2.id = it2.tag_id WHERE it2.item_id = i.id) AS tag_list
+			FROM item i
+			JOIN container c ON c.id = i.container_id
+			JOIN item_tag it ON it.item_id = i.id
+			JOIN tag t ON t.id = it.tag_id
+			WHERE t.name IN (%s)
+			GROUP BY i.id, i.container_id, i.name, i.description,
+			         c.col, c.row, i.created_at, i.updated_at
+			HAVING COUNT(DISTINCT t.name) = %d`, strings.Join(placeholders, ", "), len(tags)) //nolint:gosec // G202: len(tags) is an integer, not user input
+
+		if query != "" {
+			sqlStr += ` AND (LOWER(i.name) LIKE ? ESCAPE '\' OR LOWER(COALESCE(i.description, '')) LIKE ? ESCAPE '\')`
+			args = append(args, likePattern, likePattern)
+		}
+
+		sqlStr += `
+			ORDER BY c.col ASC, c.row ASC
+			LIMIT 51`
+	}
+
+	rows, err := s.conn.QueryContext(ctx, sqlStr, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search items batch: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.SearchResult
+	for rows.Next() {
+		var (
+			id                         int64
+			containerID                int64
+			name                       string
+			description                sql.NullString
+			col, row                   int
+			createdAt, updatedAt       time.Time
+			tagList                    sql.NullString
+		)
+		if err := rows.Scan(&id, &containerID, &name, &description, &col, &row, &createdAt, &updatedAt, &tagList); err != nil {
+			return nil, fmt.Errorf("scan search batch result: %w", err)
+		}
+
+		var itemTags []string
+		if tagList.Valid && tagList.String != "" {
+			itemTags = strings.Split(tagList.String, "|")
+			// Deduplicate tags (GROUP_CONCAT may duplicate when joining)
+			itemTags = model.Dedup(itemTags)
+			sortStrings(itemTags)
+		} else {
+			itemTags = []string{}
+		}
+
+		var desc *string
+		if description.Valid {
+			desc = &description.String
+		}
+
+		matchedOn := computeMatchedOn(name, desc, itemTags, lowerQuery, tagsActive)
+
+		result := model.SearchResult{
+			ItemResponse: model.ItemResponse{
+				ID:             id,
+				ContainerID:    containerID,
+				ContainerLabel: model.LabelFor(col, row),
+				Name:           name,
+				Description:    desc,
+				Tags:           itemTags,
+				CreatedAt:      model.FormatTime(createdAt),
+				UpdatedAt:      model.FormatTime(updatedAt),
+			},
+			MatchedOn: matchedOn,
+		}
+		results = append(results, result)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate search batch results: %w", err)
+	}
+
+	totalCount := len(results)
+	if len(results) == 51 {
+		// More than 50 results exist — run count query
+		count, countErr := s.searchBatchCount(ctx, query, tags, tagsActive, likePattern, lowerQuery)
+		if countErr != nil {
+			return nil, countErr
+		}
+		totalCount = count
+		results = results[:50]
+	}
+
+	if results == nil {
+		results = []model.SearchResult{}
+	}
+
+	return &model.SearchResponse{Results: results, TotalCount: totalCount}, nil
+}
+
+// searchBatchCount runs a COUNT(*) query matching the same filters as SearchItemsBatch.
+func (s *Store) searchBatchCount(ctx context.Context, query string, tags []string, tagsActive bool, likePattern, lowerQuery string) (int, error) {
+	var sqlStr string
+	var args []any
+
+	if !tagsActive {
+		sqlStr = `
+			SELECT COUNT(*) FROM (
+				SELECT i.id
+				FROM item i
+				JOIN container c ON c.id = i.container_id
+				LEFT JOIN item_tag it ON it.item_id = i.id
+				LEFT JOIN tag t ON t.id = it.tag_id
+				WHERE LOWER(i.name) LIKE ? ESCAPE '\'
+				   OR t.name = ?
+				   OR LOWER(COALESCE(i.description, '')) LIKE ? ESCAPE '\'
+				GROUP BY i.id
+			)`
+		args = []any{likePattern, lowerQuery, likePattern}
+	} else {
+		placeholders := make([]string, len(tags))
+		args = make([]any, 0, len(tags)+2)
+		for i, tag := range tags {
+			placeholders[i] = "?"
+			args = append(args, strings.ToLower(tag))
+		}
+
+		inner := fmt.Sprintf(`
+			SELECT i.id
+			FROM item i
+			JOIN item_tag it ON it.item_id = i.id
+			JOIN tag t ON t.id = it.tag_id
+			WHERE t.name IN (%s)
+			GROUP BY i.id
+			HAVING COUNT(DISTINCT t.name) = %d`, strings.Join(placeholders, ", "), len(tags)) //nolint:gosec // G202: len(tags) is integer
+
+		if query != "" {
+			inner += ` AND (LOWER(i.name) LIKE ? ESCAPE '\' OR LOWER(COALESCE(i.description, '')) LIKE ? ESCAPE '\')`
+			args = append(args, likePattern, likePattern)
+		}
+
+		sqlStr = fmt.Sprintf(`SELECT COUNT(*) FROM (%s)`, inner)
+	}
+
+	var count int
+	if err := s.conn.QueryRowContext(ctx, sqlStr, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count search batch: %w", err)
+	}
+	return count, nil
+}
+
+// computeMatchedOn determines which fields matched the search query.
+func computeMatchedOn(name string, description *string, tags []string, query string, tagsActive bool) []string {
+	if query == "" {
+		return nil
+	}
+	var matched []string
+	if strings.Contains(strings.ToLower(name), query) {
+		matched = append(matched, "name")
+	}
+	if description != nil && strings.Contains(strings.ToLower(*description), query) {
+		matched = append(matched, "description")
+	}
+	if !tagsActive {
+		for _, tag := range tags {
+			if tag == query {
+				matched = append(matched, "tag")
+				break
+			}
+		}
+	}
+	return matched
+}
+
+// sortStrings sorts a string slice in place.
+func sortStrings(ss []string) {
+	for i := 1; i < len(ss); i++ {
+		for j := i; j > 0 && ss[j] < ss[j-1]; j-- {
+			ss[j], ss[j-1] = ss[j-1], ss[j]
+		}
+	}
+}
+
 // ResizeShelf atomically resizes the shelf grid.
 func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error) {
 	tx, err := s.conn.BeginTx(ctx, nil)
