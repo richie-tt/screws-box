@@ -107,7 +107,7 @@ const csrfTokenName = "csrf_token"
 // For form submissions, it checks the csrf_token form field.
 // GET/HEAD/OPTIONS requests are exempt.
 // When auth is disabled, CSRF is skipped (no session to bind tokens to).
-func csrfProtect(s StoreService) func(http.Handler) http.Handler {
+func (srv *Server) csrfProtect() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Read-only methods are exempt.
@@ -117,14 +117,14 @@ func csrfProtect(s StoreService) func(http.Handler) http.Handler {
 			}
 
 			// Skip CSRF when auth is disabled — no session to bind tokens to.
-			settings, err := s.GetAuthSettings(r.Context())
+			settings, err := srv.store.GetAuthSettings(r.Context())
 			if err != nil || !settings.Enabled {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			// Validate CSRF: the X-CSRF-Token header must match the server-side CSRF token.
-			expected := getSessionCSRFToken(r)
+			expected := srv.sessions.GetCSRFToken(r)
 			if expected == "" {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return

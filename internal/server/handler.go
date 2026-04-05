@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"html/template"
 	"log/slog"
@@ -11,113 +9,9 @@ import (
 	"screws-box/internal/model"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 )
-
-// --- Session management ---
-
-// sessionData holds per-session state on the server side.
-type sessionData struct {
-	username  string
-	csrfToken string
-}
-
-var (
-	sessions       sync.Map // sessionToken -> sessionData
-	cookieName     = "screwsbox_session"
-	csrfCookieName = "screwsbox_csrf"
-)
-
-func generateToken() string {
-	b := make([]byte, 32)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
-// isSecure returns true if the request arrived over HTTPS.
-func isSecure(r *http.Request) bool {
-	if r.TLS != nil {
-		return true
-	}
-	// Behind reverse proxy with X-Forwarded-Proto header.
-	return r.Header.Get("X-Forwarded-Proto") == "https"
-}
-
-func createSession(w http.ResponseWriter, r *http.Request, username string) {
-	sessionToken := generateToken()
-	csrfToken := generateToken()
-	secure := isSecure(r)
-	sessions.Store(sessionToken, sessionData{username: username, csrfToken: csrfToken})
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    sessionToken,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-	})
-	// CSRF cookie — separate value, readable by JS for double-submit pattern.
-	http.SetCookie(w, &http.Cookie{
-		Name:     csrfCookieName,
-		Value:    csrfToken,
-		Path:     "/",
-		HttpOnly: false,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func destroySession(w http.ResponseWriter, r *http.Request) {
-	c, err := r.Cookie(cookieName)
-	if err == nil {
-		sessions.Delete(c.Value)
-	}
-	// Clear cookies with both Secure variants so stale Secure cookies
-	// from a previous deployment (when Secure was hardcoded true) get
-	// removed regardless of whether the current request is HTTP or HTTPS.
-	for _, sec := range []bool{false, true} {
-		http.SetCookie(w, &http.Cookie{
-			Name:     cookieName,
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			HttpOnly: true,
-			Secure:   sec,
-		})
-		http.SetCookie(w, &http.Cookie{
-			Name:   csrfCookieName,
-			Value:  "",
-			Path:   "/",
-			MaxAge: -1,
-			Secure: sec,
-		})
-	}
-}
-
-func getSessionUser(r *http.Request) string {
-	c, err := r.Cookie(cookieName)
-	if err != nil {
-		return ""
-	}
-	if data, ok := sessions.Load(c.Value); ok {
-		return data.(sessionData).username
-	}
-	return ""
-}
-
-// getSessionCSRFToken returns the server-side CSRF token for the current session.
-func getSessionCSRFToken(r *http.Request) string {
-	c, err := r.Cookie(cookieName)
-	if err != nil {
-		return ""
-	}
-	if data, ok := sessions.Load(c.Value); ok {
-		return data.(sessionData).csrfToken
-	}
-	return ""
-}
 
 // StoreService defines the storage operations required by HTTP handlers.
 type StoreService interface {
@@ -143,9 +37,9 @@ type StoreService interface {
 
 // --- Healthcheck ---
 
-func handleHealthz(s StoreService) http.HandlerFunc {
+func (srv *Server) handleHealthz() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := s.Ping(r.Context()); err != nil {
+		if err := srv.store.Ping(r.Context()); err != nil {
 			slog.Error("healthcheck failed", "err", err)
 			http.Error(w, "unhealthy", http.StatusServiceUnavailable)
 			return
@@ -270,7 +164,7 @@ func ValidateResizeRequest(req *model.ResizeRequest) string {
 	return ""
 }
 
-func handleResizeShelf(s StoreService) http.HandlerFunc {
+func (srv *Server) handleResizeShelf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req model.ResizeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -281,7 +175,7 @@ func handleResizeShelf(s StoreService) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-		result, err := s.ResizeShelf(r.Context(), req.Rows, req.Cols)
+		result, err := srv.store.ResizeShelf(r.Context(), req.Rows, req.Cols)
 		if err != nil {
 			slog.Error("resize shelf", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -292,7 +186,7 @@ func handleResizeShelf(s StoreService) http.HandlerFunc {
 			return
 		}
 		if req.Name != nil {
-			if err := s.UpdateShelfName(r.Context(), *req.Name); err != nil {
+			if err := srv.store.UpdateShelfName(r.Context(), *req.Name); err != nil {
 				slog.Error("update shelf name", "err", err)
 			}
 		}
@@ -302,9 +196,9 @@ func handleResizeShelf(s StoreService) http.HandlerFunc {
 
 // --- Template handler ---
 
-func handleGrid(s StoreService) http.HandlerFunc {
+func (srv *Server) handleGrid() http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		data, err := s.GetGridData()
+		data, err := srv.store.GetGridData()
 		if err != nil {
 			slog.Error("failed to load grid data", "err", err)
 			data = &model.GridData{Error: "Cannot load shelf -- check server logs."}
@@ -326,7 +220,7 @@ func handleGrid(s StoreService) http.HandlerFunc {
 
 // --- API handlers ---
 
-func handleCreateItem(s StoreService) http.HandlerFunc {
+func (srv *Server) handleCreateItem() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req CreateItemRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -337,7 +231,7 @@ func handleCreateItem(s StoreService) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-		item, err := s.CreateItem(r.Context(), req.ContainerID, req.Name, req.Description, req.Tags)
+		item, err := srv.store.CreateItem(r.Context(), req.ContainerID, req.Name, req.Description, req.Tags)
 		if err != nil {
 			if strings.Contains(err.Error(), "container not found") {
 				writeError(w, http.StatusNotFound, "container not found")
@@ -351,14 +245,14 @@ func handleCreateItem(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleGetItem(s StoreService) http.HandlerFunc {
+func (srv *Server) handleGetItem() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid item ID")
 			return
 		}
-		item, err := s.GetItem(r.Context(), id)
+		item, err := srv.store.GetItem(r.Context(), id)
 		if err != nil {
 			slog.Error("get item", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -372,7 +266,7 @@ func handleGetItem(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleUpdateItem(s StoreService) http.HandlerFunc {
+func (srv *Server) handleUpdateItem() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
@@ -388,7 +282,7 @@ func handleUpdateItem(s StoreService) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-		item, err := s.UpdateItem(r.Context(), id, req.Name, req.Description, req.ContainerID)
+		item, err := srv.store.UpdateItem(r.Context(), id, req.Name, req.Description, req.ContainerID)
 		if err != nil {
 			if strings.Contains(err.Error(), "container not found") {
 				writeError(w, http.StatusNotFound, "container not found")
@@ -406,14 +300,14 @@ func handleUpdateItem(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleDeleteItem(s StoreService) http.HandlerFunc {
+func (srv *Server) handleDeleteItem() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid item ID")
 			return
 		}
-		if err := s.DeleteItem(r.Context(), id); err != nil {
+		if err := srv.store.DeleteItem(r.Context(), id); err != nil {
 			if strings.Contains(err.Error(), "item not found") {
 				writeError(w, http.StatusNotFound, "item not found")
 				return
@@ -426,7 +320,7 @@ func handleDeleteItem(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleAddTag(s StoreService) http.HandlerFunc {
+func (srv *Server) handleAddTag() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
@@ -442,7 +336,7 @@ func handleAddTag(s StoreService) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, msg)
 			return
 		}
-		item, err := s.AddTagToItem(r.Context(), id, req.Name)
+		item, err := srv.store.AddTagToItem(r.Context(), id, req.Name)
 		if err != nil {
 			if strings.Contains(err.Error(), "item not found") {
 				writeError(w, http.StatusNotFound, "item not found")
@@ -456,7 +350,7 @@ func handleAddTag(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleRemoveTag(s StoreService) http.HandlerFunc {
+func (srv *Server) handleRemoveTag() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
 		if err != nil {
@@ -464,7 +358,7 @@ func handleRemoveTag(s StoreService) http.HandlerFunc {
 			return
 		}
 		tagName := strings.ToLower(chi.URLParam(r, "tagName"))
-		if err := s.RemoveTagFromItem(r.Context(), id, tagName); err != nil {
+		if err := srv.store.RemoveTagFromItem(r.Context(), id, tagName); err != nil {
 			if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "not associated") {
 				writeError(w, http.StatusNotFound, err.Error())
 				return
@@ -477,14 +371,14 @@ func handleRemoveTag(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleListContainerItems(s StoreService) http.HandlerFunc {
+func (srv *Server) handleListContainerItems() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(chi.URLParam(r, "containerID"), 10, 64)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid container ID")
 			return
 		}
-		result, err := s.ListItemsByContainer(r.Context(), id)
+		result, err := srv.store.ListItemsByContainer(r.Context(), id)
 		if err != nil {
 			slog.Error("list container items", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -498,9 +392,9 @@ func handleListContainerItems(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleListItems(s StoreService) http.HandlerFunc {
+func (srv *Server) handleListItems() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := s.ListAllItems(r.Context())
+		items, err := srv.store.ListAllItems(r.Context())
 		if err != nil {
 			slog.Error("list items", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -510,7 +404,7 @@ func handleListItems(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleSearch(s StoreService) http.HandlerFunc {
+func (srv *Server) handleSearch() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 		tagParam := strings.TrimSpace(r.URL.Query().Get("tags"))
@@ -534,9 +428,9 @@ func handleSearch(s StoreService) http.HandlerFunc {
 		var items []model.ItemResponse
 		var err error
 		if len(tags) > 0 {
-			items, err = s.SearchItemsByTags(r.Context(), q, tags)
+			items, err = srv.store.SearchItemsByTags(r.Context(), q, tags)
 		} else {
-			items, err = s.SearchItems(r.Context(), q)
+			items, err = srv.store.SearchItems(r.Context(), q)
 		}
 		if err != nil {
 			slog.Error("search items", "err", err)
@@ -548,10 +442,10 @@ func handleSearch(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleListTags(s StoreService) http.HandlerFunc {
+func (srv *Server) handleListTags() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-		tags, err := s.ListTags(r.Context(), q)
+		tags, err := srv.store.ListTags(r.Context(), q)
 		if err != nil {
 			slog.Error("list tags", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -562,10 +456,10 @@ func handleListTags(s StoreService) http.HandlerFunc {
 }
 
 // authMiddleware checks if authentication is enabled and redirects to /login if needed.
-func authMiddleware(s StoreService) func(http.Handler) http.Handler {
+func (srv *Server) authMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			settings, err := s.GetAuthSettings(r.Context())
+			settings, err := srv.store.GetAuthSettings(r.Context())
 			if err != nil {
 				slog.Error("auth middleware: get settings", "err", err)
 				next.ServeHTTP(w, r)
@@ -575,7 +469,7 @@ func authMiddleware(s StoreService) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if getSessionUser(r) != "" {
+			if srv.sessions.GetUser(r) != "" {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -593,16 +487,16 @@ type loginData struct {
 	Error string
 }
 
-func handleLoginPage(s StoreService) http.HandlerFunc {
+func (srv *Server) handleLoginPage() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// If auth not enabled, redirect to home
-		settings, err := s.GetAuthSettings(r.Context())
+		settings, err := srv.store.GetAuthSettings(r.Context())
 		if err == nil && !settings.Enabled {
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
 		// If already logged in, redirect to home
-		if getSessionUser(r) != "" {
+		if srv.sessions.GetUser(r) != "" {
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
@@ -610,13 +504,13 @@ func handleLoginPage(s StoreService) http.HandlerFunc {
 	}
 }
 
-func handleLoginPost(s StoreService) http.HandlerFunc {
+func (srv *Server) handleLoginPost() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
 		username := strings.TrimSpace(r.FormValue("username"))
 		password := r.FormValue("password")
 
-		valid, err := s.ValidateCredentials(r.Context(), username, password)
+		valid, err := srv.store.ValidateCredentials(r.Context(), username, password)
 		if err != nil {
 			slog.Error("login: validate credentials", "err", err)
 			renderLogin(w, loginData{Error: "Internal error, please try again."})
@@ -626,14 +520,18 @@ func handleLoginPost(s StoreService) http.HandlerFunc {
 			renderLogin(w, loginData{Error: "Invalid username or password."})
 			return
 		}
-		createSession(w, r, username)
+		if err := srv.sessions.Create(w, r, username); err != nil {
+			slog.Error("login: create session", "err", err)
+			renderLogin(w, loginData{Error: "Internal error, please try again."})
+			return
+		}
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
 
-func handleLogout() http.HandlerFunc {
+func (srv *Server) handleLogout() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		destroySession(w, r)
+		srv.sessions.Destroy(w, r)
 		http.Redirect(w, r, "/login", http.StatusFound)
 	}
 }
@@ -652,9 +550,9 @@ func renderLogin(w http.ResponseWriter, data loginData) {
 	}
 }
 
-func handleGetAuthSettings(s StoreService) http.HandlerFunc {
+func (srv *Server) handleGetAuthSettings() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		settings, err := s.GetAuthSettings(r.Context())
+		settings, err := srv.store.GetAuthSettings(r.Context())
 		if err != nil {
 			slog.Error("get auth settings", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -696,7 +594,7 @@ func validatePassword(pw string) string {
 	return ""
 }
 
-func handleUpdateAuthSettings(s StoreService) http.HandlerFunc {
+func (srv *Server) handleUpdateAuthSettings() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req model.AuthSettings
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -718,19 +616,19 @@ func handleUpdateAuthSettings(s StoreService) http.HandlerFunc {
 		}
 		// When enabling auth, require a password if none has been set yet
 		if req.Enabled && req.Password == "" {
-			existing, err := s.GetAuthSettings(r.Context())
+			existing, err := srv.store.GetAuthSettings(r.Context())
 			if err != nil || !existing.HasPassword {
 				writeError(w, http.StatusBadRequest, "password is required when auth is enabled")
 				return
 			}
 		}
-		if err := s.UpdateAuthSettings(r.Context(), &req); err != nil {
+		if err := srv.store.UpdateAuthSettings(r.Context(), &req); err != nil {
 			slog.Error("update auth settings", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 		// Return updated settings (without password)
-		updated, err := s.GetAuthSettings(r.Context())
+		updated, err := srv.store.GetAuthSettings(r.Context())
 		if err != nil {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 			return
