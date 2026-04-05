@@ -14,7 +14,7 @@
   // --- Section 2: Utility functions ---
 
   function getCSRFToken() {
-    var match = document.cookie.match(/(?:^|; )sb_csrf=([^;]*)/);
+    var match = document.cookie.match(/(?:^|; )screwsbox_csrf=([^;]*)/);
     return match ? match[1] : '';
   }
 

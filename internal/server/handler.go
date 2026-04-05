@@ -26,8 +26,8 @@ type sessionData struct {
 
 var (
 	sessions       sync.Map // sessionToken -> sessionData
-	cookieName     = "sb_session"
-	csrfCookieName = "sb_csrf"
+	cookieName     = "screwsbox_session"
+	csrfCookieName = "screwsbox_csrf"
 )
 
 func generateToken() string {
