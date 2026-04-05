@@ -39,26 +39,29 @@
     <div class="search-sidebar-input">
       <input type="search" id="search-input" placeholder="Search items or tags..." aria-label="Search items"
              role="combobox" aria-expanded="false" aria-autocomplete="list"
-             aria-controls="search-results-listbox" aria-activedescendant="" autocomplete="off">
+             aria-controls="search-unified-listbox" aria-activedescendant="" autocomplete="off">
+      <span class="search-badge-count" id="search-badge-count" aria-live="polite" hidden></span>
       <span class="search-spinner" hidden></span>
       <button type="button" class="search-clear-btn" aria-label="Clear search" hidden>&times;</button>
+    </div>
+    <div class="search-filter-chips" id="search-filter-chips" hidden>
+      <!-- Tag filter chips rendered by JS -->
     </div>
     <div class="search-sidebar-hint" id="search-hint">
       <kbd>/</kbd> to focus
     </div>
-    <div class="tag-filter" id="tag-filter">
-      <div class="tag-filter-input-wrap">
-        <input type="text" id="tag-filter-input" placeholder="Filter by tags..."
-               aria-label="Filter by tags" autocomplete="off">
-        <ul id="tag-suggest-list" class="tag-suggest-list" hidden></ul>
+    <div class="search-unified-dropdown" id="search-dropdown" hidden>
+      <div class="search-dropdown-tags" id="search-dropdown-tags" hidden>
+        <div class="search-dropdown-header">TAGS</div>
+        <ul class="tag-suggest-list" id="tag-suggest-list" role="listbox" aria-label="Tag suggestions"></ul>
       </div>
-      <div class="tag-filter-chips" id="tag-filter-chips"></div>
-    </div>
-    <div class="search-results-panel" id="search-dropdown" hidden>
-      <div class="search-dropdown-header"></div>
-      <ul id="search-results-listbox" role="listbox" aria-label="Search results" class="search-results-list"></ul>
-      <div class="search-dropdown-empty" hidden></div>
-      <div class="search-dropdown-error" hidden></div>
+      <hr class="search-dropdown-divider" id="search-dropdown-divider" hidden>
+      <div class="search-dropdown-items" id="search-dropdown-items" hidden>
+        <div class="search-dropdown-header" id="search-items-header">ITEMS</div>
+        <ul id="search-unified-listbox" role="listbox" aria-label="Search results" class="search-results-list"></ul>
+      </div>
+      <div class="search-dropdown-empty" id="search-dropdown-empty" hidden></div>
+      <div class="search-dropdown-error" id="search-dropdown-error" hidden></div>
     </div>
   </aside>
   <div class="grid-wrapper">

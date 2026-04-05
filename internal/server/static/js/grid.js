@@ -1351,37 +1351,50 @@
     }
   });
 
-  // --- Section 9: Search ---
+  // --- Section 9: Unified Search ---
 
   var searchInput = document.getElementById('search-input');
   var searchDropdown = document.getElementById('search-dropdown');
-  var searchListbox = document.getElementById('search-results-listbox');
+  var searchListbox = document.getElementById('search-unified-listbox');
 
   if (!searchInput || !searchDropdown || !searchListbox) return;
 
-  var dropdownHeader = searchDropdown.querySelector('.search-dropdown-header');
-  var dropdownEmpty = searchDropdown.querySelector('.search-dropdown-empty');
-  var dropdownError = searchDropdown.querySelector('.search-dropdown-error');
+  var dropdownTagsSection = document.getElementById('search-dropdown-tags');
+  var tagSuggestList = document.getElementById('tag-suggest-list');
+  var dropdownItemsSection = document.getElementById('search-dropdown-items');
+  var dropdownDivider = document.getElementById('search-dropdown-divider');
+  var searchItemsHeader = document.getElementById('search-items-header');
+  var dropdownEmpty = document.getElementById('search-dropdown-empty');
+  var dropdownError = document.getElementById('search-dropdown-error');
+  var filterChipsContainer = document.getElementById('search-filter-chips');
+  var badgeCount = document.getElementById('search-badge-count');
   var clearBtn = document.querySelector('.search-clear-btn');
   var spinner = document.querySelector('.search-spinner');
 
-  var searchController = null;
+  // 9a. State variables
+  var activeFilterTags = [];
+  var searchAbort = null;
+  var tagAbort = null;
   var debounceTimer = null;
+  var pushStateTimer = null;
   var currentResults = [];
+  var currentTagSuggestions = [];
   var focusedIndex = -1;
+  var totalFocusableCount = 0;
   var lastQuery = '';
 
-  // 9b. Helper: highlightMatch
+  // 9b. Helper: highlightMatch (D-19: use <mark> instead of <strong>)
   function highlightMatch(text, query) {
+    if (!query) return document.createTextNode(text);
     var lower = text.toLowerCase();
     var idx = lower.indexOf(query.toLowerCase());
     if (idx === -1) return document.createTextNode(text);
 
     var frag = document.createDocumentFragment();
     if (idx > 0) frag.appendChild(document.createTextNode(text.slice(0, idx)));
-    var strong = document.createElement('strong');
-    strong.textContent = text.slice(idx, idx + query.length);
-    frag.appendChild(strong);
+    var mark = document.createElement('mark');
+    mark.textContent = text.slice(idx, idx + query.length);
+    frag.appendChild(mark);
     if (idx + query.length < text.length) {
       frag.appendChild(document.createTextNode(text.slice(idx + query.length)));
     }
@@ -1391,6 +1404,7 @@
   // 9c. Helper: showDropdown / hideDropdown
   function showDropdown() {
     searchDropdown.removeAttribute('hidden');
+    void searchDropdown.offsetHeight;
     searchDropdown.classList.add('visible');
     searchInput.setAttribute('aria-expanded', 'true');
   }
@@ -1415,34 +1429,186 @@
   // 9e. Helper: updateClearButton
   function updateClearButton() {
     if (!clearBtn) return;
-    if (searchInput.value.length > 0) {
+    if (searchInput.value.length > 0 || activeFilterTags.length > 0) {
       clearBtn.removeAttribute('hidden');
     } else {
       clearBtn.setAttribute('hidden', '');
     }
   }
 
-  // 9f. Core: renderResults
-  function renderResults(results, query) {
+  // 9f. Helper: updateBadgeCount (D-06)
+  function updateBadgeCount() {
+    if (!badgeCount) return;
+    if (activeFilterTags.length > 0) {
+      badgeCount.textContent = activeFilterTags.length === 1 ? '1 tag' : activeFilterTags.length + ' tags';
+      badgeCount.removeAttribute('hidden');
+    } else {
+      badgeCount.setAttribute('hidden', '');
+    }
+  }
+
+  // 9g. Filter chip management (D-03, D-04, D-07)
+  function renderFilterChips() {
+    if (!filterChipsContainer) return;
+    while (filterChipsContainer.firstChild) {
+      filterChipsContainer.removeChild(filterChipsContainer.firstChild);
+    }
+
+    if (activeFilterTags.length === 0) {
+      filterChipsContainer.setAttribute('hidden', '');
+      updateBadgeCount();
+      return;
+    }
+
+    activeFilterTags.forEach(function (tagName) {
+      var chip = document.createElement('span');
+      chip.className = 'tag-filter-chip tag-chip';
+      chip.appendChild(document.createTextNode(tagName));
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.setAttribute('aria-label', 'Remove tag ' + tagName);
+      removeBtn.textContent = '\u00D7';
+      removeBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        removeFilterTag(tagName);
+      });
+      chip.appendChild(removeBtn);
+      filterChipsContainer.appendChild(chip);
+    });
+
+    // Clear All button (D-07)
+    var clearAllBtn = document.createElement('button');
+    clearAllBtn.type = 'button';
+    clearAllBtn.className = 'search-clear-all-btn';
+    clearAllBtn.setAttribute('aria-label', 'Clear all tag filters');
+    clearAllBtn.textContent = 'Clear All';
+    clearAllBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      clearAllFilters();
+    });
+    filterChipsContainer.appendChild(clearAllBtn);
+
+    filterChipsContainer.removeAttribute('hidden');
+    updateBadgeCount();
+  }
+
+  function addFilterTag(tagName) {
+    if (activeFilterTags.indexOf(tagName) !== -1) return;
+    activeFilterTags.push(tagName);
+    renderFilterChips();
+    searchInput.value = '';
+    updateClearButton();
+    // Immediate search with new filter (D-12: 0ms for tag changes)
+    performUnifiedSearch('');
+    // pushState immediately (discrete action)
+    updateSearchURL('', activeFilterTags, true);
+  }
+
+  function removeFilterTag(tagName) {
+    activeFilterTags = activeFilterTags.filter(function (t) { return t !== tagName; });
+    renderFilterChips();
+    updateClearButton();
+    var query = searchInput.value.trim();
+    performUnifiedSearch(query);
+    updateSearchURL(query, activeFilterTags, true);
+  }
+
+  function clearAllFilters() {
+    activeFilterTags = [];
+    renderFilterChips();
+    updateClearButton();
+    var query = searchInput.value.trim();
+    performUnifiedSearch(query);
+    updateSearchURL(query, activeFilterTags, true);
+  }
+
+  // 9h. Tag suggestions rendering (D-02, D-05)
+  function renderTagSuggestions(tags, query) {
+    if (!tagSuggestList || !dropdownTagsSection) return;
+    while (tagSuggestList.firstChild) {
+      tagSuggestList.removeChild(tagSuggestList.firstChild);
+    }
+
+    // Filter out already-selected tags (D-05)
+    var filtered = tags.filter(function (t) {
+      var name = typeof t === 'string' ? t : t.name;
+      return activeFilterTags.indexOf(name) === -1;
+    });
+
+    currentTagSuggestions = filtered.map(function (t) {
+      return typeof t === 'string' ? t : t.name;
+    });
+
+    if (filtered.length === 0) {
+      dropdownTagsSection.setAttribute('hidden', '');
+      return;
+    }
+
+    filtered.forEach(function (tag, i) {
+      var name = typeof tag === 'string' ? tag : tag.name;
+      var li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.setAttribute('id', 'tag-suggest-' + i);
+      li.setAttribute('aria-selected', 'false');
+      li.appendChild(highlightMatch(name, query));
+
+      // mousedown + preventDefault to prevent input blur (Pitfall 6)
+      li.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+      });
+      li.addEventListener('click', function (e) {
+        e.stopPropagation();
+        addFilterTag(name);
+      });
+
+      tagSuggestList.appendChild(li);
+    });
+
+    dropdownTagsSection.removeAttribute('hidden');
+  }
+
+  // 9i. Item results rendering (D-18, D-19, D-24, D-26)
+  function renderItemResults(results, totalCount, query) {
     currentResults = results;
-    searchListbox.innerHTML = '';
+    while (searchListbox.firstChild) {
+      searchListbox.removeChild(searchListbox.firstChild);
+    }
+
+    if (results.length === 0 && activeFilterTags.length === 0 && !query) {
+      dropdownItemsSection.setAttribute('hidden', '');
+      return;
+    }
 
     if (results.length === 0) {
-      dropdownEmpty.textContent = "No results for '" + query + "' -- try fewer characters or a different tag";
+      dropdownItemsSection.setAttribute('hidden', '');
+      // Show empty state (D-25)
+      var emptyMsg;
+      if (activeFilterTags.length > 0 && !query) {
+        emptyMsg = 'No items match all selected tags';
+      } else if (activeFilterTags.length > 0 && query) {
+        emptyMsg = 'No items match your search with selected tags';
+      } else {
+        emptyMsg = 'No items found';
+      }
+      dropdownEmpty.textContent = emptyMsg;
       dropdownEmpty.removeAttribute('hidden');
-      dropdownHeader.setAttribute('hidden', '');
-      searchListbox.setAttribute('hidden', '');
       dropdownError.setAttribute('hidden', '');
       updateGridHighlights([], null);
-      showDropdown();
       return;
     }
 
     dropdownEmpty.setAttribute('hidden', '');
     dropdownError.setAttribute('hidden', '');
-    dropdownHeader.textContent = results.length + (results.length === 1 ? ' result' : ' results');
-    dropdownHeader.removeAttribute('hidden');
-    searchListbox.removeAttribute('hidden');
+
+    // Header: normal or truncated (D-24)
+    if (totalCount > results.length) {
+      searchItemsHeader.textContent = 'Showing ' + results.length + ' of ' + totalCount + ' results';
+    } else {
+      searchItemsHeader.textContent = 'ITEMS';
+    }
+
+    dropdownItemsSection.removeAttribute('hidden');
 
     results.forEach(function (result, index) {
       var li = document.createElement('li');
@@ -1457,7 +1623,12 @@
 
       var nameSpan = document.createElement('span');
       nameSpan.className = 'search-result-name';
-      nameSpan.appendChild(highlightMatch(result.name, query));
+      // Only highlight name when matched_on includes "name"
+      if (query && result.matched_on && result.matched_on.indexOf('name') !== -1) {
+        nameSpan.appendChild(highlightMatch(result.name, query));
+      } else {
+        nameSpan.appendChild(document.createTextNode(result.name));
+      }
       topDiv.appendChild(nameSpan);
 
       var badge = document.createElement('span');
@@ -1467,20 +1638,39 @@
 
       li.appendChild(topDiv);
 
-      // Tags row
+      // Description line (D-18)
+      if (result.description) {
+        var descDiv = document.createElement('div');
+        descDiv.className = 'search-result-desc';
+        if (query && result.matched_on && result.matched_on.indexOf('description') !== -1) {
+          descDiv.appendChild(highlightMatch(result.description, query));
+        } else {
+          descDiv.appendChild(document.createTextNode(result.description));
+        }
+        li.appendChild(descDiv);
+      }
+
+      // Tags row with clickable chips (D-26)
       if (result.tags && result.tags.length > 0) {
         var tagsDiv = document.createElement('div');
         tagsDiv.className = 'search-result-tags';
         result.tags.forEach(function (tag) {
           var chip = document.createElement('span');
           chip.className = 'tag-chip';
-          if (tag.toLowerCase() === query.toLowerCase()) {
-            var s = document.createElement('strong');
-            s.textContent = tag;
-            chip.appendChild(s);
-          } else {
+          // Highlight tag if matched_on includes "tag" and query matches
+          if (query && result.matched_on && result.matched_on.indexOf('tag') !== -1 && tag.toLowerCase() === query.toLowerCase()) {
             chip.appendChild(highlightMatch(tag, query));
+          } else {
+            chip.appendChild(document.createTextNode(tag));
           }
+          // Clicking tag chip adds it as filter (D-26)
+          chip.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+          });
+          chip.addEventListener('click', function (e) {
+            e.stopPropagation();
+            addFilterTag(tag);
+          });
           tagsDiv.appendChild(chip);
         });
         li.appendChild(tagsDiv);
@@ -1494,11 +1684,9 @@
       searchListbox.appendChild(li);
     });
 
-    showDropdown();
-    focusedIndex = -1;
     updateGridHighlights(results, null);
 
-    // Auto-scroll grid to first highlighted cell (D-26)
+    // Auto-scroll grid to first highlighted cell
     if (results.length > 0) {
       var firstCell = findCell(results[0].container_id);
       if (firstCell) {
@@ -1507,7 +1695,94 @@
     }
   }
 
-  // 9g. Core: updateGridHighlights
+  // 9j. Core: performUnifiedSearch (replaces old performSearch)
+  function performUnifiedSearch(query) {
+    // Abort stale requests (Pitfall 3)
+    if (searchAbort) searchAbort.abort();
+    if (tagAbort) tagAbort.abort();
+
+    showSpinner();
+
+    // Tag suggestions: only fetch when query has text
+    var tagPromise;
+    if (query.length > 0) {
+      tagAbort = new AbortController();
+      tagPromise = fetch('/api/tags?q=' + encodeURIComponent(query), { signal: tagAbort.signal })
+        .then(function (resp) { return resp.json(); })
+        .catch(function (err) {
+          if (err.name === 'AbortError') return null;
+          return [];
+        });
+    } else {
+      tagPromise = Promise.resolve([]);
+    }
+
+    // Item results: fetch when 2+ chars OR active filters
+    var itemPromise;
+    if (query.length >= 2 || activeFilterTags.length > 0) {
+      searchAbort = new AbortController();
+      var searchUrl = '/api/search?q=' + encodeURIComponent(query);
+      if (activeFilterTags.length > 0) {
+        searchUrl += '&tags=' + encodeURIComponent(activeFilterTags.join(','));
+      }
+      itemPromise = fetch(searchUrl, { signal: searchAbort.signal })
+        .then(function (resp) { return resp.json(); })
+        .catch(function (err) {
+          if (err.name === 'AbortError') return null;
+          return { results: [], total_count: 0 };
+        });
+    } else {
+      itemPromise = Promise.resolve({ results: [], total_count: 0 });
+    }
+
+    Promise.all([tagPromise, itemPromise]).then(function (responses) {
+      var tagData = responses[0];
+      var itemData = responses[1];
+
+      hideSpinner();
+      searchAbort = null;
+      tagAbort = null;
+
+      // Both aborted -- skip rendering
+      if (tagData === null && itemData === null) return;
+
+      // Race condition guard: check input still matches
+      if (searchInput.value.trim() !== query && !(query === '' && activeFilterTags.length > 0)) return;
+
+      // Render tag suggestions
+      renderTagSuggestions(tagData || [], query);
+
+      // Render item results
+      var results = (itemData && itemData.results) || [];
+      var totalCount = (itemData && itemData.total_count) || results.length;
+      renderItemResults(results, totalCount, query);
+
+      // Show/hide divider (only when both sections have content)
+      var hasTags = currentTagSuggestions.length > 0;
+      var hasItems = results.length > 0;
+      if (dropdownDivider) {
+        if (hasTags && hasItems) {
+          dropdownDivider.removeAttribute('hidden');
+        } else {
+          dropdownDivider.setAttribute('hidden', '');
+        }
+      }
+
+      // Update focusable count for keyboard navigation
+      totalFocusableCount = currentTagSuggestions.length + results.length;
+      focusedIndex = -1;
+      lastQuery = query;
+
+      // Show dropdown if any content
+      if (hasTags || hasItems || (activeFilterTags.length > 0) || query.length >= 2) {
+        showDropdown();
+      } else {
+        hideDropdown();
+      }
+    });
+  }
+
+  // 9k. Core: updateGridHighlights
   function updateGridHighlights(results, focusedContainerId) {
     var matchCounts = {};
     results.forEach(function (item) {
@@ -1525,7 +1800,6 @@
       cell.classList.toggle('highlight', count > 0);
       cell.classList.toggle('highlight-focus', cid === focusedContainerId);
 
-      // Match count badge (D-22)
       var badge = cell.querySelector('.match-count');
       if (count > 1) {
         if (!badge) {
@@ -1540,9 +1814,11 @@
     });
   }
 
-  // 9h. Core: clearSearch
+  // 9l. Core: clearSearch
   function clearSearch() {
     searchInput.value = '';
+    activeFilterTags = [];
+    renderFilterChips();
     hideDropdown();
 
     // Clear all grid highlights
@@ -1556,65 +1832,23 @@
     });
 
     currentResults = [];
+    currentTagSuggestions = [];
     focusedIndex = -1;
     lastQuery = '';
 
     updateClearButton();
+    updateBadgeCount();
 
-    if (searchController) {
-      searchController.abort();
-      searchController = null;
-    }
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
-    }
+    if (searchAbort) { searchAbort.abort(); searchAbort = null; }
+    if (tagAbort) { tagAbort.abort(); tagAbort = null; }
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+    if (pushStateTimer) { clearTimeout(pushStateTimer); pushStateTimer = null; }
+
+    // Clear URL params (D-16)
+    updateSearchURL('', [], true);
   }
 
-  // 9i. Core: performSearch
-  function performSearch(query) {
-    if (searchController) searchController.abort();
-    searchController = new AbortController();
-
-    showSpinner();
-
-    var searchUrl = '/api/search?q=' + encodeURIComponent(query);
-    var activeTags = getActiveFilterTags();
-    if (activeTags.length > 0) {
-      searchUrl += '&tags=' + encodeURIComponent(activeTags.join(','));
-    }
-
-    fetch(searchUrl, { signal: searchController.signal })
-      .then(function (resp) { return resp.json(); })
-      .then(function (data) {
-        hideSpinner();
-        searchController = null;
-
-        // Race condition guard (Pitfall 1): check input still matches
-        if (searchInput.value.trim() !== query) return;
-
-        renderResults(data.results || [], query);
-        lastQuery = query;
-      })
-      .catch(function (err) {
-        if (err.name === 'AbortError') return;
-        hideSpinner();
-        searchController = null;
-
-        // Show error state (D-13)
-        dropdownHeader.setAttribute('hidden', '');
-        searchListbox.setAttribute('hidden', '');
-        dropdownEmpty.setAttribute('hidden', '');
-        dropdownError.textContent = 'Search failed -- check your connection and try again';
-        dropdownError.removeAttribute('hidden');
-        showDropdown();
-
-        // Clear grid highlights on error
-        updateGridHighlights([], null);
-      });
-  }
-
-  // 9j. Core: selectResult
+  // 9m. Core: selectResult
   function selectResult(index) {
     var result = currentResults[index];
     if (!result) return;
@@ -1629,18 +1863,87 @@
     }
   }
 
-  // 9k. Event: searchInput 'input' handler
+  // 9n. URL state management (D-13 through D-17)
+  function updateSearchURL(query, tags, usePush) {
+    var params = new URLSearchParams();
+    if (query) params.set('q', query);
+    if (tags.length > 0) params.set('tags', tags.join(','));
+    var url = params.toString() ? '?' + params.toString() : window.location.pathname;
+    if (usePush) {
+      history.pushState({ q: query, tags: tags.slice() }, '', url);
+    } else {
+      history.replaceState({ q: query, tags: tags.slice() }, '', url);
+    }
+  }
+
+  function restoreSearchFromURL() {
+    var params = new URLSearchParams(window.location.search);
+    var q = params.get('q') || '';
+    var tagStr = params.get('tags') || '';
+    var tags = tagStr ? tagStr.split(',').filter(Boolean) : [];
+
+    // Set input value
+    searchInput.value = q;
+
+    // Set active filter tags and render chips
+    activeFilterTags = tags;
+    renderFilterChips();
+    updateClearButton();
+
+    // Execute search if any state present
+    if (q || tags.length > 0) {
+      performUnifiedSearch(q);
+    }
+  }
+
+  // popstate handler (D-17)
+  window.addEventListener('popstate', function () {
+    restoreSearchFromURL();
+  });
+
+  // 9o. Helper: updateFocusedResult (unified across tags + items)
+  function updateFocusedResult() {
+    var tagItems = tagSuggestList ? tagSuggestList.querySelectorAll('li[role="option"]') : [];
+    var resultItems = searchListbox.querySelectorAll('li[role="option"]');
+    var tagCount = tagItems.length;
+
+    // Clear all aria-selected
+    var i;
+    for (i = 0; i < tagItems.length; i++) { tagItems[i].setAttribute('aria-selected', 'false'); }
+    for (i = 0; i < resultItems.length; i++) { resultItems[i].setAttribute('aria-selected', 'false'); }
+
+    if (focusedIndex >= 0 && focusedIndex < tagCount) {
+      // Focus is on a tag suggestion
+      tagItems[focusedIndex].setAttribute('aria-selected', 'true');
+      tagItems[focusedIndex].scrollIntoView({ block: 'nearest' });
+      searchInput.setAttribute('aria-activedescendant', 'tag-suggest-' + focusedIndex);
+    } else if (focusedIndex >= tagCount && focusedIndex < tagCount + resultItems.length) {
+      // Focus is on an item result
+      var itemIdx = focusedIndex - tagCount;
+      resultItems[itemIdx].setAttribute('aria-selected', 'true');
+      resultItems[itemIdx].scrollIntoView({ block: 'nearest' });
+      searchInput.setAttribute('aria-activedescendant', 'search-result-' + itemIdx);
+      // Update grid highlight-focus
+      updateGridHighlights(currentResults, currentResults[itemIdx] ? currentResults[itemIdx].container_id : null);
+    } else {
+      searchInput.setAttribute('aria-activedescendant', '');
+      updateGridHighlights(currentResults, null);
+    }
+  }
+
+  // 9p. Event: searchInput 'input' handler
   searchInput.addEventListener('input', function () {
     updateClearButton();
 
     if (debounceTimer) clearTimeout(debounceTimer);
+    if (pushStateTimer) clearTimeout(pushStateTimer);
 
     var query = searchInput.value.trim();
 
-    if (query.length < 2 && getActiveFilterTags().length === 0) {
+    // If no active filters and query too short, clear
+    if (query.length < 1 && activeFilterTags.length === 0) {
       hideDropdown();
       hideSpinner();
-      // Clear grid highlights
       gridContainer.classList.remove('search-active');
       var cells = document.querySelectorAll('.grid-cell');
       cells.forEach(function (cell) {
@@ -1649,31 +1952,38 @@
         var badge = cell.querySelector('.match-count');
         if (badge) badge.remove();
       });
-      // Abort any in-flight request
-      if (searchController) {
-        searchController.abort();
-        searchController = null;
-      }
+      if (searchAbort) { searchAbort.abort(); searchAbort = null; }
+      if (tagAbort) { tagAbort.abort(); tagAbort = null; }
+      // Clear URL (D-16)
+      updateSearchURL('', [], false);
       return;
     }
 
-    // Close any open panel before entering search mode (D-24)
+    // Close any open panel before entering search mode
     if (expandedPanel) collapseCell();
 
     showSpinner();
     debounceTimer = setTimeout(function () {
-      performSearch(query);
-    }, 200);
+      performUnifiedSearch(query);
+      // replaceState during typing (Pitfall 4)
+      updateSearchURL(query, activeFilterTags, false);
+    }, 250);
+
+    // pushState after 1s of typing inactivity (settled state)
+    pushStateTimer = setTimeout(function () {
+      updateSearchURL(searchInput.value.trim(), activeFilterTags, true);
+    }, 1000);
   });
 
-  // 9l. Event: searchInput 'keydown' handler
+  // 9q. Event: searchInput 'keydown' handler
   searchInput.addEventListener('keydown', function (e) {
     var dropdownVisible = searchDropdown.classList.contains('visible');
+    var tagCount = currentTagSuggestions.length;
 
     if (e.key === 'ArrowDown') {
-      if (dropdownVisible && currentResults.length > 0) {
+      if (dropdownVisible && totalFocusableCount > 0) {
         e.preventDefault();
-        if (focusedIndex < currentResults.length - 1) {
+        if (focusedIndex < totalFocusableCount - 1) {
           focusedIndex++;
         } else {
           focusedIndex = 0;
@@ -1693,18 +2003,22 @@
     } else if (e.key === 'Enter') {
       if (focusedIndex >= 0) {
         e.preventDefault();
-        selectResult(focusedIndex);
+        if (focusedIndex < tagCount) {
+          // Tag suggestion selected
+          addFilterTag(currentTagSuggestions[focusedIndex]);
+        } else {
+          // Item result selected
+          selectResult(focusedIndex - tagCount);
+        }
       }
     } else if (e.key === 'Escape') {
       if (focusedIndex >= 0) {
-        // Layer 1: return focus from results to input
         focusedIndex = -1;
         updateFocusedResult();
         searchInput.focus();
         e.preventDefault();
         e.stopPropagation();
       } else if (dropdownVisible) {
-        // Layer 2: close dropdown and clear highlights
         hideDropdown();
         gridContainer.classList.remove('search-active');
         var cells = document.querySelectorAll('.grid-cell');
@@ -1716,11 +2030,15 @@
         });
         e.preventDefault();
         e.stopPropagation();
-      } else if (searchInput.value.length > 0) {
-        // Layer 3: clear search text entirely
+      } else if (searchInput.value.length > 0 || activeFilterTags.length > 0) {
         clearSearch();
         e.preventDefault();
         e.stopPropagation();
+      }
+    } else if (e.key === 'Backspace') {
+      // Remove last filter chip when input is empty (keyboard shortcut)
+      if (searchInput.value === '' && activeFilterTags.length > 0) {
+        removeFilterTag(activeFilterTags[activeFilterTags.length - 1]);
       }
     } else if (e.key === 'Home') {
       if (focusedIndex >= 0) {
@@ -1731,30 +2049,13 @@
     } else if (e.key === 'End') {
       if (focusedIndex >= 0) {
         e.preventDefault();
-        focusedIndex = currentResults.length - 1;
+        focusedIndex = totalFocusableCount - 1;
         updateFocusedResult();
       }
     }
   });
 
-  // 9m. Helper: updateFocusedResult
-  function updateFocusedResult() {
-    var items = searchListbox.querySelectorAll('li[role="option"]');
-    items.forEach(function (li, i) {
-      li.setAttribute('aria-selected', i === focusedIndex ? 'true' : 'false');
-    });
-
-    searchInput.setAttribute('aria-activedescendant', focusedIndex >= 0 ? 'search-result-' + focusedIndex : '');
-
-    if (focusedIndex >= 0 && items[focusedIndex]) {
-      items[focusedIndex].scrollIntoView({ block: 'nearest' });
-    }
-
-    // Update grid highlight-focus (D-25)
-    updateGridHighlights(currentResults, focusedIndex >= 0 ? currentResults[focusedIndex].container_id : null);
-  }
-
-  // 9n. Event: clearBtn 'click' handler
+  // 9r. Event: clearBtn 'click' handler
   if (clearBtn) {
     clearBtn.addEventListener('click', function (e) {
       e.preventDefault();
@@ -1764,7 +2065,7 @@
     });
   }
 
-  // 9o. Event: document 'keydown' for / shortcut (D-18)
+  // 9s. Event: document 'keydown' for / shortcut
   document.addEventListener('keydown', function (e) {
     if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       var tag = document.activeElement.tagName;
@@ -1775,153 +2076,23 @@
     }
   });
 
-  // 9p. Event: click outside search area to close dropdown (keep highlights per D-27)
+  // 9t. Event: click outside search area to close dropdown
   document.addEventListener('click', function (e) {
     if (searchDropdown.classList.contains('visible') && !e.target.closest('.search-sidebar')) {
       hideDropdown();
     }
   });
 
-  // ==========================================================================
-  // 10. Tag Filter
-  // ==========================================================================
-
-  var tagFilterInput = document.getElementById('tag-filter-input');
-  var tagSuggestList = document.getElementById('tag-suggest-list');
-  var tagFilterChips = document.getElementById('tag-filter-chips');
-  var activeFilterTags = [];
-  var tagSuggestFocused = -1;
-  var tagDebounceTimer = null;
-
-  function getActiveFilterTags() {
-    return activeFilterTags.slice();
-  }
-
-  function addFilterTag(tagName) {
-    var normalized = tagName.toLowerCase().trim();
-    if (!normalized || activeFilterTags.indexOf(normalized) !== -1) return;
-    activeFilterTags.push(normalized);
-    renderFilterChips();
-    tagFilterInput.value = '';
-    hideTagSuggest();
-    triggerSearchWithTags();
-  }
-
-  function removeFilterTag(tagName) {
-    activeFilterTags = activeFilterTags.filter(function (t) { return t !== tagName; });
-    renderFilterChips();
-    triggerSearchWithTags();
-  }
-
-  function renderFilterChips() {
-    tagFilterChips.innerHTML = '';
-    activeFilterTags.forEach(function (tag) {
-      var chip = document.createElement('span');
-      chip.className = 'tag-filter-chip';
-      chip.textContent = tag;
-      var btn = document.createElement('button');
-      btn.textContent = '\u00d7';
-      btn.setAttribute('aria-label', 'Remove tag ' + tag);
-      btn.addEventListener('click', function () { removeFilterTag(tag); });
-      chip.appendChild(btn);
-      tagFilterChips.appendChild(chip);
-    });
-
-    // Update main search placeholder
-    if (searchInput) {
-      searchInput.placeholder = activeFilterTags.length > 0
-        ? 'Search item names...'
-        : 'Search items or tags...';
-    }
-  }
-
-  function triggerSearchWithTags() {
-    var query = searchInput ? searchInput.value.trim() : '';
-    if (activeFilterTags.length > 0 && query.length === 0) {
-      // Tags active, no text — search by tags only
-      performSearch('');
-    } else if (query.length >= 2) {
-      performSearch(query);
-    } else if (activeFilterTags.length === 0) {
-      clearSearch();
-    }
-  }
-
-  function hideTagSuggest() {
-    tagSuggestList.setAttribute('hidden', '');
-    tagSuggestList.innerHTML = '';
-    tagSuggestFocused = -1;
-  }
-
-  function renderTagSuggestions(tags) {
-    tagSuggestList.innerHTML = '';
-    tagSuggestFocused = -1;
-    if (tags.length === 0) {
-      hideTagSuggest();
-      return;
-    }
-    tags.forEach(function (tag, idx) {
-      var li = document.createElement('li');
-      li.textContent = tag.name;
-      li.addEventListener('click', function () { addFilterTag(tag.name); });
-      tagSuggestList.appendChild(li);
-    });
-    tagSuggestList.removeAttribute('hidden');
-  }
-
-  if (tagFilterInput) {
-    tagFilterInput.addEventListener('input', function () {
-      var val = tagFilterInput.value.trim();
-      if (tagDebounceTimer) clearTimeout(tagDebounceTimer);
-      if (val.length === 0) {
-        hideTagSuggest();
-        return;
+  // 9u. Event: input blur -- close dropdown after delay (allow click on suggestions)
+  searchInput.addEventListener('blur', function () {
+    setTimeout(function () {
+      if (!searchDropdown.contains(document.activeElement) && document.activeElement !== searchInput) {
+        hideDropdown();
       }
-      tagDebounceTimer = setTimeout(function () {
-        fetch('/api/tags?q=' + encodeURIComponent(val))
-          .then(function (r) { return r.json(); })
-          .then(function (tags) {
-            // Filter out already-active tags
-            var filtered = (tags || []).filter(function (t) {
-              return activeFilterTags.indexOf(t.name) === -1;
-            });
-            renderTagSuggestions(filtered);
-          })
-          .catch(function () { hideTagSuggest(); });
-      }, 200);
-    });
+    }, 150);
+  });
 
-    tagFilterInput.addEventListener('keydown', function (e) {
-      var items = tagSuggestList.querySelectorAll('li');
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        tagSuggestFocused = Math.min(tagSuggestFocused + 1, items.length - 1);
-        items.forEach(function (li, i) { li.classList.toggle('focused', i === tagSuggestFocused); });
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        tagSuggestFocused = Math.max(tagSuggestFocused - 1, 0);
-        items.forEach(function (li, i) { li.classList.toggle('focused', i === tagSuggestFocused); });
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (tagSuggestFocused >= 0 && items[tagSuggestFocused]) {
-          addFilterTag(items[tagSuggestFocused].textContent);
-        } else if (tagFilterInput.value.trim()) {
-          addFilterTag(tagFilterInput.value);
-        }
-      } else if (e.key === 'Escape') {
-        hideTagSuggest();
-        tagFilterInput.blur();
-      } else if (e.key === 'Backspace' && tagFilterInput.value === '' && activeFilterTags.length > 0) {
-        removeFilterTag(activeFilterTags[activeFilterTags.length - 1]);
-      }
-    });
-
-    // Close suggest on click outside
-    document.addEventListener('click', function (e) {
-      if (!e.target.closest('.tag-filter')) {
-        hideTagSuggest();
-      }
-    });
-  }
+  // 9v. On page load: restore search state from URL (D-14)
+  restoreSearchFromURL();
 
 })();
