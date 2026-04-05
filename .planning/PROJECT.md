@@ -87,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-05 after v1.1 milestone start*
+*Last updated: 2026-04-05 after Phase 11 (Session Store Interface) complete — session management abstracted behind Store interface with MemoryStore, DI via Server struct*
