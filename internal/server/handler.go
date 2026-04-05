@@ -18,9 +18,16 @@ import (
 
 // --- Session management ---
 
+// sessionData holds per-session state on the server side.
+type sessionData struct {
+	username  string
+	csrfToken string
+}
+
 var (
-	sessions   sync.Map // token -> username
-	cookieName = "screwsbox_session"
+	sessions       sync.Map // sessionToken -> sessionData
+	cookieName     = "screwsbox_session"
+	csrfCookieName = "screwsbox_csrf"
 )
 
 func generateToken() string {
@@ -30,13 +37,24 @@ func generateToken() string {
 }
 
 func createSession(w http.ResponseWriter, username string) {
-	token := generateToken()
-	sessions.Store(token, username)
+	sessionToken := generateToken()
+	csrfToken := generateToken()
+	sessions.Store(sessionToken, sessionData{username: username, csrfToken: csrfToken})
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
-		Value:    token,
+		Value:    sessionToken,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	// CSRF cookie — separate value, readable by JS for double-submit pattern.
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    csrfToken,
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -52,6 +70,14 @@ func destroySession(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   true,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:   csrfCookieName,
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+		Secure: true,
 	})
 }
 
@@ -60,8 +86,20 @@ func getSessionUser(r *http.Request) string {
 	if err != nil {
 		return ""
 	}
-	if user, ok := sessions.Load(c.Value); ok {
-		return user.(string)
+	if data, ok := sessions.Load(c.Value); ok {
+		return data.(sessionData).username
+	}
+	return ""
+}
+
+// getSessionCSRFToken returns the server-side CSRF token for the current session.
+func getSessionCSRFToken(r *http.Request) string {
+	c, err := r.Cookie(cookieName)
+	if err != nil {
+		return ""
+	}
+	if data, ok := sessions.Load(c.Value); ok {
+		return data.(sessionData).csrfToken
 	}
 	return ""
 }

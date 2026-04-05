@@ -21,19 +21,19 @@ func NewRouter(s StoreService) http.Handler {
 		r.Use(middleware.Logger)
 		r.Use(middleware.Recoverer)
 		r.Use(middleware.RequestID)
+		r.Use(newRateLimitAPI())
 
 		// Public routes (no auth required)
 		r.Get("/login", handleLoginPage(s))
-		r.Post("/login", handleLoginPost(s))
+		r.With(newRateLimitLogin()).Post("/login", handleLoginPost(s))
 		r.Get("/logout", handleLogout())
-		r.Get("/api/shelf/auth", handleGetAuthSettings(s))
-		r.Put("/api/shelf/auth", handleUpdateAuthSettings(s))
 		r.Handle("/static/*", http.StripPrefix("/static/",
 			http.FileServerFS(mustSubFS(ContentFS, "static"))))
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware(s))
+			r.Use(csrfProtect(s))
 
 			r.Get("/", handleGrid(s))
 
@@ -53,6 +53,8 @@ func NewRouter(s StoreService) http.Handler {
 				r.Get("/search", handleSearch(s))
 				r.Get("/containers/{containerID}/items", handleListContainerItems(s))
 				r.Put("/shelf/resize", handleResizeShelf(s))
+				r.Get("/shelf/auth", handleGetAuthSettings(s))
+				r.Put("/shelf/auth", handleUpdateAuthSettings(s))
 			})
 		})
 	})

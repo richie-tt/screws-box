@@ -35,15 +35,15 @@ func TestPragmasSet(t *testing.T) {
 	s := openTestStore(t)
 
 	var journalMode string
-	require.NoError(t, s.db.QueryRow("PRAGMA journal_mode").Scan(&journalMode))
+	require.NoError(t, s.conn.QueryRow("PRAGMA journal_mode").Scan(&journalMode))
 	assert.Equal(t, "wal", journalMode)
 
 	var fk int
-	require.NoError(t, s.db.QueryRow("PRAGMA foreign_keys").Scan(&fk))
+	require.NoError(t, s.conn.QueryRow("PRAGMA foreign_keys").Scan(&fk))
 	assert.Equal(t, 1, fk)
 
 	var bt int
-	require.NoError(t, s.db.QueryRow("PRAGMA busy_timeout").Scan(&bt))
+	require.NoError(t, s.conn.QueryRow("PRAGMA busy_timeout").Scan(&bt))
 	assert.Equal(t, 5000, bt)
 }
 
@@ -53,7 +53,7 @@ func TestSchemaTablesExist(t *testing.T) {
 	tables := []string{"shelf", "container", "item", "tag", "item_tag"}
 	for _, table := range tables {
 		var name string
-		err := s.db.QueryRow(
+		err := s.conn.QueryRow(
 			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
 		).Scan(&name)
 		assert.NoError(t, err, "table %q not found", table)
@@ -65,14 +65,14 @@ func TestDefaultShelfSeeded(t *testing.T) {
 
 	var name string
 	var rows, cols int
-	err := s.db.QueryRow("SELECT name, rows, cols FROM shelf").Scan(&name, &rows, &cols)
+	err := s.conn.QueryRow("SELECT name, rows, cols FROM shelf").Scan(&name, &rows, &cols)
 	require.NoError(t, err, "query shelf")
 	assert.Equal(t, "My Organizer", name)
 	assert.Equal(t, 5, rows)
 	assert.Equal(t, 10, cols)
 
 	var containerCount int
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&containerCount))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM container").Scan(&containerCount))
 	assert.Equal(t, 50, containerCount)
 }
 
@@ -88,11 +88,11 @@ func TestSeedIdempotent(t *testing.T) {
 	defer s2.Close()
 
 	var shelfCount int
-	require.NoError(t, s2.db.QueryRow("SELECT COUNT(*) FROM shelf").Scan(&shelfCount))
+	require.NoError(t, s2.conn.QueryRow("SELECT COUNT(*) FROM shelf").Scan(&shelfCount))
 	assert.Equal(t, 1, shelfCount)
 
 	var containerCount int
-	require.NoError(t, s2.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&containerCount))
+	require.NoError(t, s2.conn.QueryRow("SELECT COUNT(*) FROM container").Scan(&containerCount))
 	assert.Equal(t, 50, containerCount)
 }
 
@@ -130,11 +130,11 @@ func TestGetGridDataItemCounts(t *testing.T) {
 	s := openTestStore(t)
 
 	var containerID int64
-	err := s.db.QueryRow("SELECT id FROM container WHERE col = 3 AND row = 2").Scan(&containerID)
+	err := s.conn.QueryRow("SELECT id FROM container WHERE col = 3 AND row = 2").Scan(&containerID)
 	require.NoError(t, err, "find container")
 
 	for i := range 3 {
-		_, err := s.db.Exec("INSERT INTO item (container_id, name) VALUES (?, ?)",
+		_, err := s.conn.Exec("INSERT INTO item (container_id, name) VALUES (?, ?)",
 			containerID, fmt.Sprintf("Item %d", i+1))
 		require.NoError(t, err, "insert item %d", i+1)
 	}
@@ -165,7 +165,7 @@ func TestGetGridDataContainerIDs(t *testing.T) {
 
 	cell3B := data.Grid[1].Cells[2]
 	var dbID int64
-	err = s.db.QueryRow("SELECT id FROM container WHERE col = 3 AND row = 2").Scan(&dbID)
+	err = s.conn.QueryRow("SELECT id FROM container WHERE col = 3 AND row = 2").Scan(&dbID)
 	require.NoError(t, err, "query container")
 	assert.Equal(t, dbID, cell3B.ContainerID)
 }
@@ -173,16 +173,16 @@ func TestGetGridDataContainerIDs(t *testing.T) {
 func TestGetGridDataCustomDimensions(t *testing.T) {
 	s := openTestStore(t)
 
-	_, err := s.db.Exec("UPDATE shelf SET rows = 2, cols = 3")
+	_, err := s.conn.Exec("UPDATE shelf SET rows = 2, cols = 3")
 	require.NoError(t, err, "update shelf")
-	_, err = s.db.Exec("DELETE FROM container")
+	_, err = s.conn.Exec("DELETE FROM container")
 	require.NoError(t, err, "delete containers")
 
 	var shelfID int64
-	require.NoError(t, s.db.QueryRow("SELECT id FROM shelf LIMIT 1").Scan(&shelfID))
+	require.NoError(t, s.conn.QueryRow("SELECT id FROM shelf LIMIT 1").Scan(&shelfID))
 	for col := 1; col <= 3; col++ {
 		for row := 1; row <= 2; row++ {
-			_, err := s.db.Exec(
+			_, err := s.conn.Exec(
 				"INSERT INTO container (shelf_id, col, row) VALUES (?, ?, ?)",
 				shelfID, col, row,
 			)
@@ -203,22 +203,22 @@ func TestCascadeDeleteContainerRemovesItems(t *testing.T) {
 	s := openTestStore(t)
 
 	var containerID int64
-	require.NoError(t, s.db.QueryRow("SELECT id FROM container LIMIT 1").Scan(&containerID))
+	require.NoError(t, s.conn.QueryRow("SELECT id FROM container LIMIT 1").Scan(&containerID))
 
-	_, err := s.db.Exec(
+	_, err := s.conn.Exec(
 		"INSERT INTO item (container_id, name) VALUES (?, ?)",
 		containerID, "Test Screw",
 	)
 	require.NoError(t, err, "insert item")
 
 	var itemCount int
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item WHERE container_id = ?", containerID).Scan(&itemCount))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM item WHERE container_id = ?", containerID).Scan(&itemCount))
 	require.Equal(t, 1, itemCount, "expected 1 item before delete")
 
-	_, err = s.db.Exec("DELETE FROM container WHERE id = ?", containerID)
+	_, err = s.conn.Exec("DELETE FROM container WHERE id = ?", containerID)
 	require.NoError(t, err, "delete container")
 
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item WHERE container_id = ?", containerID).Scan(&itemCount))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM item WHERE container_id = ?", containerID).Scan(&itemCount))
 	assert.Equal(t, 0, itemCount)
 }
 
@@ -226,30 +226,30 @@ func TestCascadeDeleteItemRemovesItemTags(t *testing.T) {
 	s := openTestStore(t)
 
 	var containerID int64
-	require.NoError(t, s.db.QueryRow("SELECT id FROM container LIMIT 1").Scan(&containerID))
+	require.NoError(t, s.conn.QueryRow("SELECT id FROM container LIMIT 1").Scan(&containerID))
 
-	res, err := s.db.Exec("INSERT INTO tag (name) VALUES (?)", "m6")
+	res, err := s.conn.Exec("INSERT INTO tag (name) VALUES (?)", "m6")
 	require.NoError(t, err, "insert tag")
 	tagID, _ := res.LastInsertId()
 
-	res, err = s.db.Exec(
+	res, err = s.conn.Exec(
 		"INSERT INTO item (container_id, name) VALUES (?, ?)",
 		containerID, "M6 Bolt",
 	)
 	require.NoError(t, err, "insert item")
 	itemID, _ := res.LastInsertId()
 
-	_, err = s.db.Exec("INSERT INTO item_tag (item_id, tag_id) VALUES (?, ?)", itemID, tagID)
+	_, err = s.conn.Exec("INSERT INTO item_tag (item_id, tag_id) VALUES (?, ?)", itemID, tagID)
 	require.NoError(t, err, "insert item_tag")
 
 	var linkCount int
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", itemID).Scan(&linkCount))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", itemID).Scan(&linkCount))
 	require.Equal(t, 1, linkCount, "expected 1 item_tag before delete")
 
-	_, err = s.db.Exec("DELETE FROM item WHERE id = ?", itemID)
+	_, err = s.conn.Exec("DELETE FROM item WHERE id = ?", itemID)
 	require.NoError(t, err, "delete item")
 
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", itemID).Scan(&linkCount))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", itemID).Scan(&linkCount))
 	assert.Equal(t, 0, linkCount)
 }
 
@@ -258,7 +258,7 @@ func TestCascadeDeleteItemRemovesItemTags(t *testing.T) {
 func getTestContainerID(t *testing.T, s *Store) int64 {
 	t.Helper()
 	var id int64
-	err := s.db.QueryRow("SELECT id FROM container LIMIT 1").Scan(&id)
+	err := s.conn.QueryRow("SELECT id FROM container LIMIT 1").Scan(&id)
 	require.NoError(t, err, "get test container")
 	return id
 }
@@ -266,7 +266,7 @@ func getTestContainerID(t *testing.T, s *Store) int64 {
 func getSecondContainerID(t *testing.T, s *Store, firstID int64) int64 {
 	t.Helper()
 	var id int64
-	err := s.db.QueryRow("SELECT id FROM container WHERE id != ? LIMIT 1", firstID).Scan(&id)
+	err := s.conn.QueryRow("SELECT id FROM container WHERE id != ? LIMIT 1", firstID).Scan(&id)
 	require.NoError(t, err, "get second container")
 	return id
 }
@@ -274,7 +274,7 @@ func getSecondContainerID(t *testing.T, s *Store, firstID int64) int64 {
 func getContainerIDByPos(t *testing.T, s *Store, col, row int) int64 {
 	t.Helper()
 	var id int64
-	err := s.db.QueryRow("SELECT id FROM container WHERE col = ? AND row = ?", col, row).Scan(&id)
+	err := s.conn.QueryRow("SELECT id FROM container WHERE col = ? AND row = ?", col, row).Scan(&id)
 	require.NoError(t, err, "get container at (%d,%d)", col, row)
 	return id
 }
@@ -435,7 +435,7 @@ func TestDeleteItemContainerPersists(t *testing.T) {
 	require.NoError(t, s.DeleteItem(ctx, created.ID))
 
 	var count int
-	err = s.db.QueryRow("SELECT COUNT(*) FROM container WHERE id = ?", containerID).Scan(&count)
+	err = s.conn.QueryRow("SELECT COUNT(*) FROM container WHERE id = ?", containerID).Scan(&count)
 	require.NoError(t, err, "query container")
 	assert.Equal(t, 1, count)
 }
@@ -493,7 +493,7 @@ func TestRemoveTagFromItem(t *testing.T) {
 	assert.Equal(t, []string{"keep"}, item.Tags)
 
 	var tagCount int
-	err = s.db.QueryRow("SELECT COUNT(*) FROM tag WHERE name = ?", "remove").Scan(&tagCount)
+	err = s.conn.QueryRow("SELECT COUNT(*) FROM tag WHERE name = ?", "remove").Scan(&tagCount)
 	require.NoError(t, err, "query tag")
 	assert.Equal(t, 1, tagCount, "orphaned tags should be kept")
 }
@@ -724,7 +724,7 @@ func TestTagsInJunctionTable(t *testing.T) {
 	require.NoError(t, err)
 
 	var count int
-	err = s.db.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", item.ID).Scan(&count)
+	err = s.conn.QueryRow("SELECT COUNT(*) FROM item_tag WHERE item_id = ?", item.ID).Scan(&count)
 	require.NoError(t, err, "query item_tag")
 	assert.Equal(t, 2, count)
 }
@@ -753,7 +753,7 @@ func TestResizeShelf_BlockedWhenItemsExist(t *testing.T) {
 	assert.True(t, found, "AffectedContainers missing label 10E, got: %+v", result.AffectedContainers)
 
 	var rows, cols int
-	require.NoError(t, s.db.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols))
+	require.NoError(t, s.conn.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols))
 	assert.Equal(t, 5, rows)
 	assert.Equal(t, 10, cols)
 }
@@ -793,17 +793,17 @@ func TestResizeShelf_ExpandCreatesContainers(t *testing.T) {
 
 	for _, tc := range []struct{ col, row int }{{11, 1}, {1, 6}, {12, 7}} {
 		var count int
-		err := s.db.QueryRow("SELECT COUNT(*) FROM container WHERE col = ? AND row = ?", tc.col, tc.row).Scan(&count)
+		err := s.conn.QueryRow("SELECT COUNT(*) FROM container WHERE col = ? AND row = ?", tc.col, tc.row).Scan(&count)
 		require.NoError(t, err)
 		assert.Equal(t, 1, count, "container at (%d,%d)", tc.col, tc.row)
 	}
 
 	var total int
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM container").Scan(&total))
 	assert.Equal(t, 84, total)
 
 	var rows, cols int
-	require.NoError(t, s.db.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols))
+	require.NoError(t, s.conn.QueryRow("SELECT rows, cols FROM shelf LIMIT 1").Scan(&rows, &cols))
 	assert.Equal(t, 7, rows)
 	assert.Equal(t, 12, cols)
 }
@@ -819,11 +819,11 @@ func TestResizeShelf_ShrinkDeletesEmptyContainers(t *testing.T) {
 	assert.Equal(t, 5, result.Cols)
 
 	var outOfBounds int
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 5").Scan(&outOfBounds))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 5").Scan(&outOfBounds))
 	assert.Equal(t, 0, outOfBounds)
 
 	var total int
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM container").Scan(&total))
 	assert.Equal(t, 15, total)
 }
 
@@ -838,7 +838,7 @@ func TestResizeShelf_SameSize(t *testing.T) {
 	assert.Equal(t, 10, result.Cols)
 
 	var total int
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container").Scan(&total))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM container").Scan(&total))
 	assert.Equal(t, 50, total)
 }
 
@@ -855,11 +855,11 @@ func TestResizeShelf_ShrinkWithMixedOccupancy(t *testing.T) {
 	assert.Equal(t, 3, result.Cols)
 
 	var outOfBounds int
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 3").Scan(&outOfBounds))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM container WHERE row > 3 OR col > 3").Scan(&outOfBounds))
 	assert.Equal(t, 0, outOfBounds)
 
 	var itemCount int
-	require.NoError(t, s.db.QueryRow("SELECT COUNT(*) FROM item").Scan(&itemCount))
+	require.NoError(t, s.conn.QueryRow("SELECT COUNT(*) FROM item").Scan(&itemCount))
 	assert.Equal(t, 1, itemCount)
 }
 
@@ -872,17 +872,12 @@ func TestUpdateShelfName(t *testing.T) {
 	require.NoError(t, s.UpdateShelfName(ctx, "Test Shelf"))
 
 	var name string
-	err := s.db.QueryRow("SELECT name FROM shelf LIMIT 1").Scan(&name)
+	err := s.conn.QueryRow("SELECT name FROM shelf LIMIT 1").Scan(&name)
 	require.NoError(t, err)
 	assert.Equal(t, "Test Shelf", name)
 }
 
 // --- DB accessor ---
-
-func TestDBAccessor(t *testing.T) {
-	s := openTestStore(t)
-	assert.NotNil(t, s.DB())
-}
 
 // --- Close nil ---
 
@@ -927,7 +922,7 @@ func TestRemoveTagNotAssociated(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a tag that is NOT associated with the item
-	_, err = s.db.Exec("INSERT OR IGNORE INTO tag (name) VALUES (?)", "orphan")
+	_, err = s.conn.Exec("INSERT OR IGNORE INTO tag (name) VALUES (?)", "orphan")
 	require.NoError(t, err)
 
 	err = s.RemoveTagFromItem(ctx, created.ID, "orphan")

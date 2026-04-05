@@ -2,42 +2,38 @@ package store
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"screws-box/internal/model"
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite" // register SQLite driver
 )
 
-// hashPassword hashes a password with a random salt using SHA-256.
-// Format: "sha256:<hex-salt>:<hex-hash>"
+// hashPassword hashes a password using bcrypt with default cost.
 func hashPassword(password string) string {
-	salt := make([]byte, 16, 16+len(password))
-	rand.Read(salt)
-	h := sha256.Sum256(append(salt, []byte(password)...))
-	return "sha256:" + hex.EncodeToString(salt) + ":" + hex.EncodeToString(h[:])
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		// bcrypt only fails if password > 72 bytes; this is validated upstream.
+		panic(fmt.Sprintf("bcrypt hash: %v", err))
+	}
+	return string(hash)
 }
 
 // checkPassword verifies a password against a stored hash.
-// Supports both hashed (sha256:salt:hash) and legacy plain-text passwords.
+// Supports bcrypt hashes and legacy sha256:salt:hash format (read-only, for migration).
 func checkPassword(stored, password string) bool {
-	parts := strings.SplitN(stored, ":", 3)
-	if len(parts) == 3 && parts[0] == "sha256" {
-		salt, err := hex.DecodeString(parts[1])
-		if err != nil {
-			return false
-		}
-		h := sha256.Sum256(append(salt, []byte(password)...))
-		return hex.EncodeToString(h[:]) == parts[2]
+	if strings.HasPrefix(stored, "$2a$") || strings.HasPrefix(stored, "$2b$") {
+		return bcrypt.CompareHashAndPassword([]byte(stored), []byte(password)) == nil
 	}
-	// Legacy plain-text comparison
-	return stored == password
+	// Legacy sha256 hashes — constant-time comparison not needed because
+	// bcrypt.CompareHashAndPassword already handles timing for bcrypt.
+	// For legacy hashes, reject outright to force password reset.
+	slog.Warn("legacy password hash detected, user must reset password")
+	return false
 }
 
 // schemaDDL contains all CREATE TABLE and CREATE INDEX statements.
@@ -103,17 +99,44 @@ func deferRollback(tx *sql.Tx) {
 
 // Store wraps the SQLite database connection.
 type Store struct {
-	db *sql.DB
+	conn *sql.DB
 }
 
-// DB returns the underlying *sql.DB for direct queries in tests.
-func (s *Store) DB() *sql.DB {
-	return s.db
+// DisableAuth clears all authentication settings on the shelf.
+func (s *Store) DisableAuth() error {
+	_, err := s.conn.Exec("UPDATE shelf SET auth_enabled = 0, auth_user = '', auth_pass = '' WHERE id = (SELECT id FROM shelf LIMIT 1)")
+	return err
+}
+
+// GetContainerIDByPosition returns the container ID at the given grid position.
+func (s *Store) GetContainerIDByPosition(col, row int) (int64, error) {
+	var id int64
+	err := s.conn.QueryRow("SELECT id FROM container WHERE col = ? AND row = ?", col, row).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("get container by position (%d,%d): %w", col, row, err)
+	}
+	return id, nil
+}
+
+// GetShelfName returns the name of the first shelf.
+func (s *Store) GetShelfName() (string, error) {
+	var name string
+	err := s.conn.QueryRow("SELECT name FROM shelf LIMIT 1").Scan(&name)
+	if err != nil {
+		return "", fmt.Errorf("get shelf name: %w", err)
+	}
+	return name, nil
+}
+
+// GetRawAuthRow returns raw auth fields for testing purposes.
+func (s *Store) GetRawAuthRow() (enabled int, user, passHash string, err error) {
+	err = s.conn.QueryRow("SELECT auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").Scan(&enabled, &user, &passHash)
+	return
 }
 
 // Ping verifies the database connection is alive.
 func (s *Store) Ping(ctx context.Context) error {
-	return s.db.PingContext(ctx)
+	return s.conn.PingContext(ctx)
 }
 
 // Open opens the SQLite database at dbPath, configures pragmas,
@@ -131,7 +154,7 @@ func (s *Store) Open(dbPath string) error {
 		return fmt.Errorf("ping database: %w", err)
 	}
 
-	s.db = db
+	s.conn = db
 
 	if err := s.createSchema(); err != nil {
 		db.Close()
@@ -149,14 +172,14 @@ func (s *Store) Open(dbPath string) error {
 
 // Close closes the database connection.
 func (s *Store) Close() error {
-	if s.db != nil {
-		return s.db.Close()
+	if s.conn != nil {
+		return s.conn.Close()
 	}
 	return nil
 }
 
 func (s *Store) createSchema() error {
-	tx, err := s.db.Begin()
+	tx, err := s.conn.Begin()
 	if err != nil {
 		return fmt.Errorf("begin schema tx: %w", err)
 	}
@@ -173,21 +196,21 @@ func (s *Store) createSchema() error {
 
 	// Run migrations (idempotent ALTER TABLE statements).
 	for _, m := range migrations {
-		_, _ = s.db.Exec(m) // ignore "duplicate column" errors
+		_, _ = s.conn.Exec(m) // ignore "duplicate column" errors
 	}
 	return nil
 }
 
 func (s *Store) seedDefaultShelf() error {
 	var count int
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM shelf").Scan(&count); err != nil {
+	if err := s.conn.QueryRow("SELECT COUNT(*) FROM shelf").Scan(&count); err != nil {
 		return fmt.Errorf("check shelf count: %w", err)
 	}
 	if count > 0 {
 		return nil
 	}
 
-	tx, err := s.db.Begin()
+	tx, err := s.conn.Begin()
 	if err != nil {
 		return fmt.Errorf("begin seed tx: %w", err)
 	}
@@ -235,13 +258,13 @@ func (s *Store) GetGridData() (*model.GridData, error) {
 	var shelf model.Shelf
 	var authEnabled int
 	var authUser, authPass string
-	err := s.db.QueryRow("SELECT id, name, rows, cols, auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").
+	err := s.conn.QueryRow("SELECT id, name, rows, cols, auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").
 		Scan(&shelfID, &shelf.Name, &shelf.Rows, &shelf.Cols, &authEnabled, &authUser, &authPass)
 	if err != nil {
 		return nil, fmt.Errorf("query shelf: %w", err)
 	}
 
-	rows, err := s.db.Query(`
+	rows, err := s.conn.Query(`
 		SELECT c.id, c.col, c.row, COUNT(i.id) AS item_count
 		FROM container c
 		LEFT JOIN item i ON c.id = i.container_id
@@ -314,7 +337,7 @@ func (s *Store) GetGridData() (*model.GridData, error) {
 
 // CreateItem inserts an item with name, description, and tags in a single transaction.
 func (s *Store) CreateItem(ctx context.Context, containerID int64, name string, description *string, tags []string) (*model.ItemResponse, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
@@ -373,7 +396,7 @@ func (s *Store) GetItem(ctx context.Context, id int64) (*model.ItemResponse, err
 	var col, row int
 	var createdAt, updatedAt time.Time
 
-	err := s.db.QueryRowContext(ctx,
+	err := s.conn.QueryRowContext(ctx,
 		`SELECT i.id, i.container_id, i.name, i.description, c.col, c.row, i.created_at, i.updated_at
 		 FROM item i JOIN container c ON c.id = i.container_id
 		 WHERE i.id = ?`, id).
@@ -389,7 +412,7 @@ func (s *Store) GetItem(ctx context.Context, id int64) (*model.ItemResponse, err
 	item.CreatedAt = model.FormatTime(createdAt)
 	item.UpdatedAt = model.FormatTime(updatedAt)
 
-	tagRows, err := s.db.QueryContext(ctx,
+	tagRows, err := s.conn.QueryContext(ctx,
 		"SELECT t.name FROM tag t JOIN item_tag it ON it.tag_id = t.id WHERE it.item_id = ? ORDER BY t.name", id)
 	if err != nil {
 		return nil, fmt.Errorf("query tags: %w", err)
@@ -415,7 +438,7 @@ func (s *Store) GetItem(ctx context.Context, id int64) (*model.ItemResponse, err
 // UpdateItem changes name, description, and container_id of an item.
 // Does NOT touch tags. Returns nil, nil if the item does not exist.
 func (s *Store) UpdateItem(ctx context.Context, id int64, name string, description *string, containerID int64) (*model.ItemResponse, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
@@ -455,7 +478,7 @@ func (s *Store) UpdateItem(ctx context.Context, id int64, name string, descripti
 // DeleteItem removes an item by ID. CASCADE handles item_tag cleanup.
 func (s *Store) DeleteItem(ctx context.Context, id int64) error {
 	var itemID int64
-	err := s.db.QueryRowContext(ctx, "SELECT id FROM item WHERE id = ?", id).Scan(&itemID)
+	err := s.conn.QueryRowContext(ctx, "SELECT id FROM item WHERE id = ?", id).Scan(&itemID)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("item not found")
 	}
@@ -463,7 +486,7 @@ func (s *Store) DeleteItem(ctx context.Context, id int64) error {
 		return fmt.Errorf("check item: %w", err)
 	}
 
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM item WHERE id = ?", id); err != nil {
+	if _, err := s.conn.ExecContext(ctx, "DELETE FROM item WHERE id = ?", id); err != nil {
 		return fmt.Errorf("delete item: %w", err)
 	}
 	return nil
@@ -471,7 +494,7 @@ func (s *Store) DeleteItem(ctx context.Context, id int64) error {
 
 // AddTagToItem creates the tag if not exists and links it to the item.
 func (s *Store) AddTagToItem(ctx context.Context, itemID int64, tagName string) (*model.ItemResponse, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
@@ -519,7 +542,7 @@ func (s *Store) AddTagToItem(ctx context.Context, itemID int64, tagName string) 
 // The tag itself remains in the tag table (orphaned tags kept).
 func (s *Store) RemoveTagFromItem(ctx context.Context, itemID int64, tagName string) error {
 	var tagID int64
-	err := s.db.QueryRowContext(ctx, "SELECT id FROM tag WHERE name = ?", tagName).Scan(&tagID)
+	err := s.conn.QueryRowContext(ctx, "SELECT id FROM tag WHERE name = ?", tagName).Scan(&tagID)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("tag not found")
 	}
@@ -527,7 +550,7 @@ func (s *Store) RemoveTagFromItem(ctx context.Context, itemID int64, tagName str
 		return fmt.Errorf("get tag: %w", err)
 	}
 
-	res, err := s.db.ExecContext(ctx, "DELETE FROM item_tag WHERE item_id = ? AND tag_id = ?", itemID, tagID)
+	res, err := s.conn.ExecContext(ctx, "DELETE FROM item_tag WHERE item_id = ? AND tag_id = ?", itemID, tagID)
 	if err != nil {
 		return fmt.Errorf("delete item_tag: %w", err)
 	}
@@ -539,7 +562,7 @@ func (s *Store) RemoveTagFromItem(ctx context.Context, itemID int64, tagName str
 		return fmt.Errorf("tag not associated with item")
 	}
 
-	if _, err := s.db.ExecContext(ctx,
+	if _, err := s.conn.ExecContext(ctx,
 		"UPDATE item SET updated_at = datetime('now') WHERE id = ?", itemID); err != nil {
 		return fmt.Errorf("update item timestamp: %w", err)
 	}
@@ -553,7 +576,7 @@ func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*m
 	var c model.ContainerWithItems
 	var createdAt, updatedAt time.Time
 
-	err := s.db.QueryRowContext(ctx,
+	err := s.conn.QueryRowContext(ctx,
 		"SELECT id, shelf_id, col, row, created_at, updated_at FROM container WHERE id = ?",
 		containerID).Scan(&c.ID, &c.ShelfID, &c.Col, &c.Row, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
@@ -567,7 +590,7 @@ func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*m
 	c.CreatedAt = model.FormatTime(createdAt)
 	c.UpdatedAt = model.FormatTime(updatedAt)
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.conn.QueryContext(ctx,
 		"SELECT id FROM item WHERE container_id = ? ORDER BY name", containerID)
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
@@ -598,7 +621,7 @@ func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*m
 
 // ListAllItems returns all items across all containers with tags.
 func (s *Store) ListAllItems(ctx context.Context) ([]model.ItemResponse, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id FROM item ORDER BY name")
+	rows, err := s.conn.QueryContext(ctx, "SELECT id FROM item ORDER BY name")
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
 	}
@@ -634,7 +657,7 @@ func (s *Store) SearchItems(ctx context.Context, query string) ([]model.ItemResp
 	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
 	likePattern := "%" + escaped + "%"
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.conn.QueryContext(ctx, `
 		SELECT DISTINCT i.id, c.col, c.row
 		FROM item i
 		JOIN container c ON c.id = i.container_id
@@ -683,7 +706,7 @@ func (s *Store) SearchItems(ctx context.Context, query string) ([]model.ItemResp
 
 // ResizeShelf atomically resizes the shelf grid.
 func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
@@ -802,7 +825,7 @@ func (s *Store) ResizeShelf(ctx context.Context, newRows, newCols int) (*model.R
 
 // UpdateShelfName updates the name of the first shelf.
 func (s *Store) UpdateShelfName(ctx context.Context, name string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.conn.ExecContext(ctx,
 		"UPDATE shelf SET name = ?, updated_at = datetime('now') WHERE id = (SELECT id FROM shelf LIMIT 1)", name)
 	return err
 }
@@ -812,7 +835,7 @@ func (s *Store) UpdateShelfName(ctx context.Context, name string) error {
 func (s *Store) GetAuthSettings(ctx context.Context) (*model.AuthSettings, error) {
 	var enabled int
 	var user, pass string
-	err := s.db.QueryRowContext(ctx, "SELECT auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").
+	err := s.conn.QueryRowContext(ctx, "SELECT auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").
 		Scan(&enabled, &user, &pass)
 	if err != nil {
 		return nil, fmt.Errorf("get auth settings: %w", err)
@@ -833,13 +856,13 @@ func (s *Store) UpdateAuthSettings(ctx context.Context, settings *model.AuthSett
 	}
 	if settings.Password != "" {
 		hashed := hashPassword(settings.Password)
-		_, err := s.db.ExecContext(ctx,
+		_, err := s.conn.ExecContext(ctx,
 			"UPDATE shelf SET auth_enabled = ?, auth_user = ?, auth_pass = ?, updated_at = datetime('now') WHERE id = (SELECT id FROM shelf LIMIT 1)",
 			enabled, settings.Username, hashed)
 		return err
 	}
 	// No password change — keep existing
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.conn.ExecContext(ctx,
 		"UPDATE shelf SET auth_enabled = ?, auth_user = ?, updated_at = datetime('now') WHERE id = (SELECT id FROM shelf LIMIT 1)",
 		enabled, settings.Username)
 	return err
@@ -849,7 +872,7 @@ func (s *Store) UpdateAuthSettings(ctx context.Context, settings *model.AuthSett
 func (s *Store) ValidateCredentials(ctx context.Context, username, password string) (bool, error) {
 	var enabled int
 	var storedUser, storedPass string
-	err := s.db.QueryRowContext(ctx, "SELECT auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").
+	err := s.conn.QueryRowContext(ctx, "SELECT auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").
 		Scan(&enabled, &storedUser, &storedPass)
 	if err != nil {
 		return false, fmt.Errorf("get auth settings: %w", err)
@@ -869,9 +892,9 @@ func (s *Store) ListTags(ctx context.Context, prefix string) ([]model.TagRespons
 	var err error
 
 	if prefix == "" {
-		rows, err = s.db.QueryContext(ctx, "SELECT id, name, created_at, updated_at FROM tag ORDER BY name")
+		rows, err = s.conn.QueryContext(ctx, "SELECT id, name, created_at, updated_at FROM tag ORDER BY name")
 	} else {
-		rows, err = s.db.QueryContext(ctx, "SELECT id, name, created_at, updated_at FROM tag WHERE name LIKE ? ORDER BY name", prefix+"%")
+		rows, err = s.conn.QueryContext(ctx, "SELECT id, name, created_at, updated_at FROM tag WHERE name LIKE ? ORDER BY name", prefix+"%")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query tags: %w", err)

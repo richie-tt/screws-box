@@ -531,8 +531,7 @@ func TestHandleResizeShelf_Success(t *testing.T) {
 func TestHandleResizeShelf_Conflict(t *testing.T) {
 	router, s := setupTestRouter(t)
 
-	var containerID int64
-	err := s.DB().QueryRow("SELECT id FROM container WHERE col = 10 AND row = 5").Scan(&containerID)
+	containerID, err := s.GetContainerIDByPosition(10, 5)
 	require.NoError(t, err, "get container")
 
 	body := fmt.Sprintf(`{"name":"Test Bolt","container_id":%d,"tags":["test"]}`, containerID)
@@ -595,8 +594,7 @@ func TestHandleResizeShelf_NameUpdate(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
 
-	var name string
-	err := s.DB().QueryRow("SELECT name FROM shelf LIMIT 1").Scan(&name)
+	name, err := s.GetShelfName()
 	require.NoError(t, err, "query shelf name")
 	assert.Equal(t, "Workshop", name)
 }
@@ -1115,13 +1113,11 @@ func TestHandleUpdateAuthSettings(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	// Verify persisted
-	var enabled int
-	var user, pass string
-	err := s.DB().QueryRow("SELECT auth_enabled, auth_user, auth_pass FROM shelf LIMIT 1").Scan(&enabled, &user, &pass)
+	enabled, user, pass, err := s.GetRawAuthRow()
 	require.NoError(t, err)
 	assert.Equal(t, 1, enabled)
 	assert.Equal(t, "admin", user)
-	assert.True(t, strings.HasPrefix(pass, "sha256:"), "password should be hashed")
+	assert.True(t, strings.HasPrefix(pass, "$2a$"), "password should be bcrypt hashed")
 }
 
 func TestHandleUpdateAuthSettingsDisable(t *testing.T) {

@@ -1,3 +1,13 @@
 .planning/
 screws_box.db
 screws_box.db-*
+*.db-shm
+*.db-wal
+.env
+.env.*
+*.key
+*.pem
+*.crt
+screws-box
+screwsbox
+coverage.out
