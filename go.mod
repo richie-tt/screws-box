@@ -5,6 +5,8 @@ go 1.26.1
 require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/crypto v0.49.0
+	golang.org/x/time v0.15.0
 	modernc.org/sqlite v1.48.0
 )
 

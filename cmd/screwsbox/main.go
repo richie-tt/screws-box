@@ -48,8 +48,7 @@ func disableAuth() error {
 	}
 	defer s.Close()
 
-	_, err := s.DB().Exec("UPDATE shelf SET auth_enabled = 0, auth_user = '', auth_pass = '' WHERE id = (SELECT id FROM shelf LIMIT 1)")
-	if err != nil {
+	if err := s.DisableAuth(); err != nil {
 		return fmt.Errorf("disable auth: %w", err)
 	}
 
@@ -83,6 +82,8 @@ func run() error {
 		Addr:              addr,
 		Handler:           server.NewRouter(&s),
 		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {

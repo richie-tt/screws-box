@@ -24,6 +24,12 @@ repos:
         pass_filenames: false
         language: golang
         types: [go]
+      - id: go-mod-verify
+        name: go mod verify
+        entry: go mod verify
+        pass_filenames: false
+        language: golang
+        types: [go]
       - id: hadolint
         name: Lint Dockerfiles
         description: Runs hadolint to lint Dockerfiles

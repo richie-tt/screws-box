@@ -13,6 +13,11 @@
 
   // --- Section 2: Utility functions ---
 
+  function getCSRFToken() {
+    var match = document.cookie.match(/(?:^|; )screwsbox_csrf=([^;]*)/);
+    return match ? match[1] : '';
+  }
+
   function validatePassword(pw) {
     if (pw.length < 12) return 'Password must be at least 12 characters';
     if (!/[A-Z]/.test(pw)) return 'Password must contain an uppercase letter';
@@ -64,6 +69,9 @@
 
   async function apiCall(url, options) {
     try {
+      if (options && options.method && options.method !== 'GET') {
+        options.headers = Object.assign({ 'X-CSRF-Token': getCSRFToken() }, options.headers);
+      }
       const resp = await fetch(url, options);
       if (resp.status === 204) {
         return { ok: true, status: 204, data: null };
@@ -1147,7 +1155,7 @@
         // Save auth settings first
         var authResp = await fetch('/api/shelf/auth', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() },
           body: JSON.stringify({ enabled: authOn, username: authUsername, password: authPassword })
         });
         if (!authResp.ok) {
@@ -1169,7 +1177,7 @@
 
         var resp = await fetch('/api/shelf/resize', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() },
           body: JSON.stringify(payload)
         });
         var data = await resp.json().catch(function () { return null; });
