@@ -107,7 +107,7 @@ Plans:
 **Milestone Goal:** Multi-tag search filtering, OIDC authentication, dedicated admin panel, optional Redis session persistence, project documentation.
 
 - [x] **Phase 11: Session Store Interface** - Extract session management into pluggable interface with memory implementation and configurable TTL (completed 2026-04-05)
-- [ ] **Phase 12: Search Enhancement** - Multi-tag AND filtering, description search, batch query optimization
+- [x] **Phase 12: Search Enhancement** - Multi-tag AND filtering, description search, batch query optimization (completed 2026-04-05)
 - [ ] **Phase 13: Admin Panel Shell** - Dedicated /admin page with shelf settings migrated from grid modal
 - [ ] **Phase 14: OIDC Authentication** - Login via OIDC provider with PKCE, local auth fallback, admin config UI
 - [ ] **Phase 15: Data Export/Import** - JSON export download and validated import upload in admin panel
@@ -139,10 +139,10 @@ Plans:
   2. Main search matches against item description field in addition to item name
   3. When tag filters are active, the main search text box searches only name and description (not tags) -- tags are handled exclusively by the filter bar
   4. Search results load without N+1 queries -- a single search with 50+ items returns in under 200ms (batch SQL)
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 12-01-PLAN.md — Batch search backend (SearchItemsBatch with GROUP_CONCAT, matched_on, total_count)
-- [ ] 12-02-PLAN.md — Unified search frontend (dropdown, filter chips, URL state, mark highlights)
+- [x] 12-01-PLAN.md — Batch search backend (SearchItemsBatch with GROUP_CONCAT, matched_on, total_count)
+- [x] 12-02-PLAN.md — Unified search frontend (dropdown, filter chips, URL state, mark highlights)
 
 ### Phase 13: Admin Panel Shell
 **Goal**: A dedicated admin page exists as the central hub for application settings, with shelf configuration migrated from the grid page
@@ -222,7 +222,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 9. Search Frontend | v1.0 | 2/2 | Complete | 2026-04-03 |
 | 10. Resilience | v1.0 | 2/2 | Complete | 2026-04-03 |
 | 11. Session Store Interface | v1.1 | 2/2 | Complete    | 2026-04-05 |
-| 12. Search Enhancement | v1.1 | 0/2 | Planned | - |
+| 12. Search Enhancement | v1.1 | 2/2 | Complete    | 2026-04-05 |
 | 13. Admin Panel Shell | v1.1 | 0/0 | Not started | - |
 | 14. OIDC Authentication | v1.1 | 0/0 | Not started | - |
 | 15. Data Export/Import | v1.1 | 0/0 | Not started | - |
