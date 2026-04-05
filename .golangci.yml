@@ -1,0 +1,102 @@
+version: "2"
+run:
+  concurrency: 4
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - copyloopvar
+    # - dupl
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - errname
+    - fatcontext
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - gomoddirectives
+    - gosec
+    - ineffassign
+    - intrange
+    - mirror
+    # - mnd
+    - musttag
+    - nilerr
+    - prealloc
+    - predeclared
+    - revive
+    - sloglint
+    - staticcheck
+    - tagliatelle
+    - testifylint
+    # - testpackage  # Disabled: intentionally testing internal API
+    - thelper
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - usetesting
+    - varnamelen
+    - wastedassign
+    # - wrapcheck  # Disabled: too many false positives with gRPC status errors
+  settings:
+    mnd:
+      ignored-numbers:
+        - "32"
+        - "253"
+        - "0o111"
+        - "0o600"
+        - "0o644"
+        - "0o755"
+      # ignored-functions:
+      #   - 'os.MkdirAll'
+      #   - 'os.WriteFile'
+      #   - 'validateRange'
+      #   - 'isValidLength'
+    tagliatelle:
+      case:
+        rules:
+          json: goCamel
+          yaml: goCamel
+        use-field-name: true
+    varnamelen:
+      # ignore-names:
+      #   - tt
+      #   - db
+      #   - vc
+      ignore-decls:
+        - db *DiscoveryDBDetails
+        - r *runner
+        - vc *csi.VolumeCapability
+    goconst:
+      ignore-string-values:
+        - "iqn.2025-01.com.example:initiator"
+        - "/usr/sbin/iscsiadm"
+        - "Yes"
+        - "apiVersion: v1"
+        - "enter"
+      min-occurrences: 4
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

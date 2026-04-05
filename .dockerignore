@@ -1,0 +1,14 @@
+.git
+.claude
+.planning
+.gitignore
+.golangci.yml
+.pre-commit-config.yaml
+CLAUDE.md
+Dockerfile
+*.db
+*.db-shm
+*.db-wal
+coverage.out
+screws-box
+screwsbox
