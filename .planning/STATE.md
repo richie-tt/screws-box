@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: completed
-last_updated: "2026-04-03T14:14:29.440Z"
+milestone: v1.1
+milestone_name: Search, Auth & Admin
+status: defining_requirements
+last_updated: "2026-04-05"
 progress:
-  total_phases: 10
-  completed_phases: 9
-  total_plans: 14
-  completed_plans: 13
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State: Screws Box
@@ -17,53 +17,15 @@ progress:
 ## Project Reference
 
 **Core Value:** Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elementu.
-**Current Milestone:** v1
-**Current Focus:** Phase 10 — resilience
+**Current Milestone:** v1.1 — Search, Auth & Admin
+**Current Focus:** Defining requirements
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
-**Status:** Milestone complete
-**Progress:** [██████████] 100%
-
-## Phases at a Glance
-
-| # | Name | Status |
-|---|------|--------|
-| 1 | Project Skeleton | Complete |
-| 2 | Database Foundation | Complete |
-| 3 | Grid UI Design | Complete |
-| 4 | Grid Rendering | Complete |
-| 5 | Item CRUD Backend | Complete |
-| 6 | Item CRUD Frontend | Complete |
-| 7 | Tag Autocomplete | Complete |
-| 8 | Search Backend | Complete |
-| 9 | Search Frontend | Complete |
-| 10 | Resilience | Executing |
-
-## Performance Metrics
-
-**Plans executed:** 12
-**Plans passed first try:** 12
-**Repair cycles used:** 0
-**Phase transitions:** 0
-
-| Phase | Plan | Duration | Tasks | Files |
-|-------|------|----------|-------|-------|
-| 01 | 01 | 2min | 2 | 12 |
-| 02 | 01 | 3min | 3 | 7 |
-| 03 | 01 | 5min | 3 | 5 |
-| 04 | 01 | 3min | 2 | 9 |
-| Phase 05 P01 | 3min | 2 tasks | 3 files |
-| Phase 05 P02 | 2min | 2 tasks | 3 files |
-| Phase 06 P01 | 2min | 2 tasks | 5 files |
-| Phase 06 P01 | 2min | 2 tasks | 4 files |
-| Phase 06 P02 | 2min | 1 tasks | 1 files |
-| Phase 07 P01 | 5min | 3 tasks | 2 files |
-| Phase 09 P01 | 2min | 2 tasks | 2 files |
-| Phase 10 P01 | 3min | 2 tasks | 6 files |
-| Phase 10 P02 | 2min | 1 tasks | 3 files |
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-05 — Milestone v1.1 started
 
 ## Accumulated Context
 
@@ -73,45 +35,22 @@ Plan: Not started
 |----------|-----------|
 | Go + chi v5 + modernc.org/sqlite | Single binary, CGo-free, no C toolchain required |
 | html/template + vanilla JS | No build step, no framework overhead |
-| Flat Go project structure | All files in root — models.go, store.go, handlers.go |
-| Pico CSS (classless) | No class annotations needed on semantic HTML |
-| labelFor(col, row) in models.go | Single canonical coordinate function, used everywhere |
-| WAL + foreign_keys + busy_timeout in Store.Open() | Must be set before any feature code touches SQLite |
-| go:embed with -tags dev | Dev reads from disk; prod embeds into binary |
-| Chessboard addressing: col=number, row=letter | "3B" = column 3, row B — intuitive like spreadsheet |
-| Module path screws-box (local) | Home project, not published to registry |
-| Templates parsed per-request | Enables dev hot reload, fast enough for this app |
-| DSN _pragma for SQLite config | Per-connection pragma enforcement via connection string, not post-open Exec |
-| No timestamps on item_tag | Join table with composite PK, not an entity — timestamps add no value |
-| Page-specific CSS via extra_head template block | grid.css loads only on /grid, not globally — keeps non-grid pages clean |
-| Auto dark/light theme (no data-theme attr) | Removed hardcoded data-theme="light" from layout.html — Pico handles via prefers-color-scheme |
-| handleGrid closure pattern for store-aware handlers | Dependency injection via closure, not global state |
-| GET / serves grid directly, /grid route removed | Grid IS the main page — no separate index needed |
-| CSS var(--grid-cols) via inline style | Dynamic column count from server, CSS fallback of 5 |
-| Autocomplete as reusable function with callback pattern | createAutocomplete(input, onSelect, getExistingTags) decouples dropdown from form logic |
+| Pico CSS removed, custom design system | Specificity wars — custom app.css with design tokens |
+| bcrypt for password hashing | SHA-256 too fast for passwords, bcrypt is industry standard |
+| CSRF double-submit cookie pattern | Separate CSRF token from session, validated server-side |
+| Rate limiting per-IP (API 5/s, login 0.5/s) | Brute-force protection without external dependency |
+| Cookie Secure flag dynamic (isSecure) | Works on HTTP dev and HTTPS prod behind proxy |
+| Store.conn unexported | No raw DB access outside store package |
 
 ### Open Questions
 
-- FTS5 support in modernc.org/sqlite: assumed yes, validate in Phase 8 planning spike
-- Unicode LIKE with Polish characters (ę, ó, ą): test in Phase 8, fallback = application-level normalization
-- htmx vs vanilla JS for search: decide in Phase 8 planning after skeleton exists
-- Mobile grid UX for large grids (10x10): concrete CSS strategy needed in Phase 9
+- OIDC library choice for Go — coreos/go-oidc vs zitadel/oidc
+- Redis client library — go-redis/redis vs mediocregopher/radix
+- Admin panel routing — separate chi group or sub-router
 
 ### Blockers
 
 None.
 
-### Todos
-
-- [x] Phase 1 skeleton complete
-- [ ] Start Phase 2 planning (`/gsd:plan-phase 2`)
-
-## Session Continuity
-
-**Last action:** Completed 10-01-PLAN.md (2026-04-03)
-**Next action:** Execute 10-02-PLAN.md (frontend settings panel + resize modal)
-**Context to restore:** Phase 10 Wave 1 complete. Backend resize API working: PUT /api/shelf/resize with validation, transactional resize, 409 blocking with affected container details.
-
 ---
-*State initialized: 2026-04-02*
-*Last updated: 2026-04-03 after Phase 10 Plan 01 completion*
+*State initialized: 2026-04-05*
