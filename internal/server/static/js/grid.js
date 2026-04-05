@@ -1578,7 +1578,13 @@
 
     showSpinner();
 
-    fetch('/api/search?q=' + encodeURIComponent(query), { signal: searchController.signal })
+    var searchUrl = '/api/search?q=' + encodeURIComponent(query);
+    var activeTags = getActiveFilterTags();
+    if (activeTags.length > 0) {
+      searchUrl += '&tags=' + encodeURIComponent(activeTags.join(','));
+    }
+
+    fetch(searchUrl, { signal: searchController.signal })
       .then(function (resp) { return resp.json(); })
       .then(function (data) {
         hideSpinner();
@@ -1631,7 +1637,7 @@
 
     var query = searchInput.value.trim();
 
-    if (query.length < 2) {
+    if (query.length < 2 && getActiveFilterTags().length === 0) {
       hideDropdown();
       hideSpinner();
       // Clear grid highlights
@@ -1775,5 +1781,147 @@
       hideDropdown();
     }
   });
+
+  // ==========================================================================
+  // 10. Tag Filter
+  // ==========================================================================
+
+  var tagFilterInput = document.getElementById('tag-filter-input');
+  var tagSuggestList = document.getElementById('tag-suggest-list');
+  var tagFilterChips = document.getElementById('tag-filter-chips');
+  var activeFilterTags = [];
+  var tagSuggestFocused = -1;
+  var tagDebounceTimer = null;
+
+  function getActiveFilterTags() {
+    return activeFilterTags.slice();
+  }
+
+  function addFilterTag(tagName) {
+    var normalized = tagName.toLowerCase().trim();
+    if (!normalized || activeFilterTags.indexOf(normalized) !== -1) return;
+    activeFilterTags.push(normalized);
+    renderFilterChips();
+    tagFilterInput.value = '';
+    hideTagSuggest();
+    triggerSearchWithTags();
+  }
+
+  function removeFilterTag(tagName) {
+    activeFilterTags = activeFilterTags.filter(function (t) { return t !== tagName; });
+    renderFilterChips();
+    triggerSearchWithTags();
+  }
+
+  function renderFilterChips() {
+    tagFilterChips.innerHTML = '';
+    activeFilterTags.forEach(function (tag) {
+      var chip = document.createElement('span');
+      chip.className = 'tag-filter-chip';
+      chip.textContent = tag;
+      var btn = document.createElement('button');
+      btn.textContent = '\u00d7';
+      btn.setAttribute('aria-label', 'Remove tag ' + tag);
+      btn.addEventListener('click', function () { removeFilterTag(tag); });
+      chip.appendChild(btn);
+      tagFilterChips.appendChild(chip);
+    });
+
+    // Update main search placeholder
+    if (searchInput) {
+      searchInput.placeholder = activeFilterTags.length > 0
+        ? 'Search item names...'
+        : 'Search items or tags...';
+    }
+  }
+
+  function triggerSearchWithTags() {
+    var query = searchInput ? searchInput.value.trim() : '';
+    if (activeFilterTags.length > 0 && query.length === 0) {
+      // Tags active, no text — search by tags only
+      performSearch('');
+    } else if (query.length >= 2) {
+      performSearch(query);
+    } else if (activeFilterTags.length === 0) {
+      clearSearch();
+    }
+  }
+
+  function hideTagSuggest() {
+    tagSuggestList.setAttribute('hidden', '');
+    tagSuggestList.innerHTML = '';
+    tagSuggestFocused = -1;
+  }
+
+  function renderTagSuggestions(tags) {
+    tagSuggestList.innerHTML = '';
+    tagSuggestFocused = -1;
+    if (tags.length === 0) {
+      hideTagSuggest();
+      return;
+    }
+    tags.forEach(function (tag, idx) {
+      var li = document.createElement('li');
+      li.textContent = tag.name;
+      li.addEventListener('click', function () { addFilterTag(tag.name); });
+      tagSuggestList.appendChild(li);
+    });
+    tagSuggestList.removeAttribute('hidden');
+  }
+
+  if (tagFilterInput) {
+    tagFilterInput.addEventListener('input', function () {
+      var val = tagFilterInput.value.trim();
+      if (tagDebounceTimer) clearTimeout(tagDebounceTimer);
+      if (val.length === 0) {
+        hideTagSuggest();
+        return;
+      }
+      tagDebounceTimer = setTimeout(function () {
+        fetch('/api/tags?q=' + encodeURIComponent(val))
+          .then(function (r) { return r.json(); })
+          .then(function (tags) {
+            // Filter out already-active tags
+            var filtered = (tags || []).filter(function (t) {
+              return activeFilterTags.indexOf(t.name) === -1;
+            });
+            renderTagSuggestions(filtered);
+          })
+          .catch(function () { hideTagSuggest(); });
+      }, 200);
+    });
+
+    tagFilterInput.addEventListener('keydown', function (e) {
+      var items = tagSuggestList.querySelectorAll('li');
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        tagSuggestFocused = Math.min(tagSuggestFocused + 1, items.length - 1);
+        items.forEach(function (li, i) { li.classList.toggle('focused', i === tagSuggestFocused); });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        tagSuggestFocused = Math.max(tagSuggestFocused - 1, 0);
+        items.forEach(function (li, i) { li.classList.toggle('focused', i === tagSuggestFocused); });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (tagSuggestFocused >= 0 && items[tagSuggestFocused]) {
+          addFilterTag(items[tagSuggestFocused].textContent);
+        } else if (tagFilterInput.value.trim()) {
+          addFilterTag(tagFilterInput.value);
+        }
+      } else if (e.key === 'Escape') {
+        hideTagSuggest();
+        tagFilterInput.blur();
+      } else if (e.key === 'Backspace' && tagFilterInput.value === '' && activeFilterTags.length > 0) {
+        removeFilterTag(activeFilterTags[activeFilterTags.length - 1]);
+      }
+    });
+
+    // Close suggest on click outside
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.tag-filter')) {
+        hideTagSuggest();
+      }
+    });
+  }
 
 })();
