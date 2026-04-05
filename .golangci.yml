@@ -39,7 +39,7 @@ linters:
     - unused
     - usestdlibvars
     - usetesting
-    - varnamelen
+    # - varnamelen  # Disabled: flags idiomatic Go names (r, w, id, tx, db, q)
     - wastedassign
     # - wrapcheck  # Disabled: too many false positives with gRPC status errors
   settings:
@@ -59,18 +59,9 @@ linters:
     tagliatelle:
       case:
         rules:
-          json: goCamel
+          json: snake
           yaml: goCamel
         use-field-name: true
-    varnamelen:
-      # ignore-names:
-      #   - tt
-      #   - db
-      #   - vc
-      ignore-decls:
-        - db *DiscoveryDBDetails
-        - r *runner
-        - vc *csi.VolumeCapability
     goconst:
       ignore-string-values:
         - "iqn.2025-01.com.example:initiator"

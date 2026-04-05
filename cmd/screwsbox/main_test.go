@@ -8,12 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"screws-box/internal/server"
+	"screws-box/internal/store"
 	"strings"
 	"testing"
 	"time"
-
-	"screws-box/internal/server"
-	"screws-box/internal/store"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,12 +71,12 @@ func TestStaticCSS(t *testing.T) {
 func TestServerBindAddress(t *testing.T) {
 	s := openTestStore(t)
 
-	listener, err := net.Listen("tcp", "0.0.0.0:0")
+	listener, err := net.Listen("tcp", "0.0.0.0:0") //nolint:gosec // G102: test server, binding all interfaces is intentional
 	require.NoError(t, err, "failed to listen")
 	port := listener.Addr().(*net.TCPAddr).Port
 	listener.Close()
 
-	srv := &http.Server{
+	srv := &http.Server{ //nolint:gosec // test server, Slowloris not a concern
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
 		Handler: server.NewRouter(s),
 	}
@@ -101,12 +100,12 @@ func TestServerBindAddress(t *testing.T) {
 func TestGracefulShutdown(t *testing.T) {
 	s := openTestStore(t)
 
-	srv := &http.Server{
+	srv := &http.Server{ //nolint:gosec // test server, Slowloris not a concern
 		Addr:    "0.0.0.0:0",
 		Handler: server.NewRouter(s),
 	}
 
-	listener, err := net.Listen("tcp", "0.0.0.0:0")
+	listener, err := net.Listen("tcp", "0.0.0.0:0") //nolint:gosec // G102: test server, binding all interfaces is intentional
 	require.NoError(t, err, "failed to listen")
 
 	errCh := make(chan error, 1)

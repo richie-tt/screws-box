@@ -24,3 +24,9 @@ repos:
         pass_filenames: false
         language: golang
         types: [go]
+      - id: hadolint
+        name: Lint Dockerfiles
+        description: Runs hadolint to lint Dockerfiles
+        language: system
+        types: ["dockerfile"]
+        entry: hadolint

@@ -8,11 +8,10 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"screws-box/internal/model"
 	"strconv"
 	"strings"
 	"sync"
-
-	"screws-box/internal/model"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -69,6 +68,7 @@ func getSessionUser(r *http.Request) string {
 
 // StoreService defines the storage operations required by HTTP handlers.
 type StoreService interface {
+	Ping(ctx context.Context) error
 	GetGridData() (*model.GridData, error)
 	CreateItem(ctx context.Context, containerID int64, name string, description *string, tags []string) (*model.ItemResponse, error)
 	GetItem(ctx context.Context, id int64) (*model.ItemResponse, error)
@@ -87,12 +87,28 @@ type StoreService interface {
 	ValidateCredentials(ctx context.Context, username, password string) (bool, error)
 }
 
+// --- Healthcheck ---
+
+func handleHealthz(s StoreService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := s.Ping(r.Context()); err != nil {
+			slog.Error("healthcheck failed", "err", err)
+			http.Error(w, "unhealthy", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}
+}
+
 // --- JSON helpers ---
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("writeJSON encode failed", "err", err)
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -233,7 +249,7 @@ func handleResizeShelf(s StoreService) http.HandlerFunc {
 // --- Template handler ---
 
 func handleGrid(s StoreService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		data, err := s.GetGridData()
 		if err != nil {
 			slog.Error("failed to load grid data", "err", err)
@@ -523,6 +539,7 @@ func handleLoginPage(s StoreService) http.HandlerFunc {
 
 func handleLoginPost(s StoreService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
 		username := strings.TrimSpace(r.FormValue("username"))
 		password := r.FormValue("password")
 
