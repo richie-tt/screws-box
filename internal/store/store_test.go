@@ -938,3 +938,216 @@ func TestRemoveTagNonexistent(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tag not found")
 }
+
+// --- SearchItemsBatch tests ---
+
+func TestSearchBatchNoTagsNameMatch(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "M6 Bolt", nil, []string{"hardware"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "bolt", nil)
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, "M6 Bolt", resp.Results[0].Name)
+	assert.Contains(t, resp.Results[0].MatchedOn, "name")
+}
+
+func TestSearchBatchNoTagsTagMatch(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "Hex Screw", nil, []string{"m6", "din912"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "m6", nil)
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, "Hex Screw", resp.Results[0].Name)
+	assert.Contains(t, resp.Results[0].MatchedOn, "tag")
+}
+
+func TestSearchBatchNoTagsDescriptionMatch(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	desc := "stainless steel hex bolt"
+	_, err := s.CreateItem(ctx, cid, "Bolt A2", &desc, []string{"hardware"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "stainless", nil)
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, "Bolt A2", resp.Results[0].Name)
+	assert.Contains(t, resp.Results[0].MatchedOn, "description")
+}
+
+func TestSearchBatchMultiTagAND(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+	cid2 := getSecondContainerID(t, s, cid)
+
+	_, err := s.CreateItem(ctx, cid, "Item Both", nil, []string{"m6", "din912"})
+	require.NoError(t, err)
+	_, err = s.CreateItem(ctx, cid2, "Item One", nil, []string{"m6", "hex"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "", []string{"m6", "din912"})
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, "Item Both", resp.Results[0].Name)
+}
+
+func TestSearchBatchTagsActiveNoTagTextMatch(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "Screw M6", nil, []string{"m6", "bolt"})
+	require.NoError(t, err)
+
+	// With tags=["m6"] active and query "bolt", item should NOT be returned
+	// because "bolt" is a tag name, not in the item's name or description,
+	// and tag text matching is disabled when tag filters are active (D-09).
+	resp, err := s.SearchItemsBatch(ctx, "bolt", []string{"m6"})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Results)
+}
+
+func TestSearchBatchTagsActiveNameMatch(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "Screw M6", nil, []string{"m6"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "screw", []string{"m6"})
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, "Screw M6", resp.Results[0].Name)
+	assert.Contains(t, resp.Results[0].MatchedOn, "name")
+}
+
+func TestSearchBatchTagsActiveDescMatch(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	desc := "stainless steel"
+	_, err := s.CreateItem(ctx, cid, "Bolt X", &desc, []string{"m6"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "stainless", []string{"m6"})
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Contains(t, resp.Results[0].MatchedOn, "description")
+}
+
+func TestSearchBatchTagsOnlyNoText(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+	cid2 := getSecondContainerID(t, s, cid)
+
+	_, err := s.CreateItem(ctx, cid, "A", nil, []string{"m6", "din912"})
+	require.NoError(t, err)
+	_, err = s.CreateItem(ctx, cid2, "B", nil, []string{"m6", "din912"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "", []string{"m6", "din912"})
+	require.NoError(t, err)
+	assert.Len(t, resp.Results, 2)
+	assert.Equal(t, 2, resp.TotalCount)
+}
+
+func TestSearchBatchGroupConcat(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "Multi Tag", nil, []string{"m6", "din912", "hex"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "multi", nil)
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Len(t, resp.Results[0].Tags, 3)
+	assert.Contains(t, resp.Results[0].Tags, "m6")
+	assert.Contains(t, resp.Results[0].Tags, "din912")
+	assert.Contains(t, resp.Results[0].Tags, "hex")
+}
+
+func TestSearchBatchLimit(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	for i := range 55 {
+		_, err := s.CreateItem(ctx, cid, fmt.Sprintf("Bolt %03d", i), nil, []string{"bulk"})
+		require.NoError(t, err)
+	}
+
+	resp, err := s.SearchItemsBatch(ctx, "bolt", nil)
+	require.NoError(t, err)
+	assert.Len(t, resp.Results, 50)
+	assert.Equal(t, 55, resp.TotalCount)
+}
+
+func TestSearchBatchCaseInsensitive(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	desc := "Hex Bolt spec"
+	_, err := s.CreateItem(ctx, cid, "m6 bolt", &desc, []string{"hardware"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "BOLT", nil)
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Contains(t, resp.Results[0].MatchedOn, "name")
+	assert.Contains(t, resp.Results[0].MatchedOn, "description")
+}
+
+func TestSearchBatchNoResults(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	resp, err := s.SearchItemsBatch(ctx, "nonexistent", nil)
+	require.NoError(t, err)
+	assert.Empty(t, resp.Results)
+	assert.Equal(t, 0, resp.TotalCount)
+}
+
+func TestSearchBatchEmptyQuery(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	resp, err := s.SearchItemsBatch(ctx, "", nil)
+	require.NoError(t, err)
+	assert.Empty(t, resp.Results)
+	assert.Equal(t, 0, resp.TotalCount)
+}
+
+func TestSearchBatchNullDescription(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "Bolt NoDesc", nil, []string{"m6"})
+	require.NoError(t, err)
+
+	resp, err := s.SearchItemsBatch(ctx, "bolt", nil)
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Contains(t, resp.Results[0].MatchedOn, "name")
+	assert.NotContains(t, resp.Results[0].MatchedOn, "description")
+	assert.Nil(t, resp.Results[0].Description)
+}
