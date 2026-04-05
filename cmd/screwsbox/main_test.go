@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"screws-box/internal/server"
+	"screws-box/internal/session"
 	"screws-box/internal/store"
 	"strings"
 	"testing"
@@ -27,9 +28,18 @@ func openTestStore(t *testing.T) *store.Store {
 	return s
 }
 
+func testRouter(t *testing.T, s *store.Store) http.Handler {
+	t.Helper()
+	ms := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
+	t.Cleanup(func() { ms.Close() })
+	mgr := session.NewManager(ms, 1*time.Hour)
+	srv := server.NewServer(s, mgr)
+	return srv.Router()
+}
+
 func TestGridHandler(t *testing.T) {
 	s := openTestStore(t)
-	router := server.NewRouter(s)
+	router := testRouter(t, s)
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
@@ -57,7 +67,7 @@ func TestGridHandler(t *testing.T) {
 
 func TestStaticCSS(t *testing.T) {
 	s := openTestStore(t)
-	router := server.NewRouter(s)
+	router := testRouter(t, s)
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
@@ -78,7 +88,7 @@ func TestServerBindAddress(t *testing.T) {
 
 	srv := &http.Server{ //nolint:gosec // test server, Slowloris not a concern
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
-		Handler: server.NewRouter(s),
+		Handler: testRouter(t, s),
 	}
 
 	go func() {
@@ -102,7 +112,7 @@ func TestGracefulShutdown(t *testing.T) {
 
 	srv := &http.Server{ //nolint:gosec // test server, Slowloris not a concern
 		Addr:    "0.0.0.0:0",
-		Handler: server.NewRouter(s),
+		Handler: testRouter(t, s),
 	}
 
 	listener, err := net.Listen("tcp", "0.0.0.0:0") //nolint:gosec // G102: test server, binding all interfaces is intentional

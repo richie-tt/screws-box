@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"screws-box/internal/server"
+	"screws-box/internal/session"
 	"screws-box/internal/store"
 	"syscall"
 	"time"
@@ -56,6 +57,23 @@ func disableAuth() error {
 	return nil
 }
 
+func parseSessionTTL() time.Duration {
+	raw := os.Getenv("SESSION_TTL")
+	if raw == "" {
+		return 24 * time.Hour
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		slog.Warn("invalid SESSION_TTL, using default 24h", "value", raw, "err", err)
+		return 24 * time.Hour
+	}
+	if d <= 0 {
+		slog.Warn("SESSION_TTL must be positive, using default 24h", "value", raw)
+		return 24 * time.Hour
+	}
+	return d
+}
+
 func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM)
@@ -72,6 +90,15 @@ func run() error {
 	}
 	defer s.Close()
 
+	sessionTTL := parseSessionTTL()
+	memStore := session.NewMemoryStore(sessionTTL, sessionTTL/2)
+	defer memStore.Close()
+	sessionMgr := session.NewManager(memStore, sessionTTL)
+
+	appSrv := server.NewServer(&s, sessionMgr)
+
+	slog.Info("session store configured", "type", "memory", "ttl", sessionTTL)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -80,7 +107,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           server.NewRouter(&s),
+		Handler:           appSrv.Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,

@@ -8,9 +8,11 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"screws-box/internal/model"
+	"screws-box/internal/session"
 	"screws-box/internal/store"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +24,13 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.Store) {
 	tmpFile := filepath.Join(t.TempDir(), "test.db")
 	require.NoError(t, s.Open(tmpFile))
 	t.Cleanup(func() { s.Close() })
-	router := NewRouter(s)
+
+	memStore := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
+	t.Cleanup(func() { memStore.Close() })
+	mgr := session.NewManager(memStore, 1*time.Hour)
+
+	srv := NewServer(s, mgr)
+	router := srv.Router()
 	return router, s
 }
 
@@ -980,12 +988,20 @@ func errStore() *mockStore {
 	}
 }
 
+// errRouter creates a router backed by errStore and an in-memory session manager.
+func errRouter() http.Handler {
+	ms := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
+	mgr := session.NewManager(ms, 1*time.Hour)
+	srv := NewServer(errStore(), mgr)
+	return srv.Router()
+}
+
 // ==========================================================================
 // Error path tests (internal server errors via mock)
 // ==========================================================================
 
 func TestHandleGridError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -995,7 +1011,7 @@ func TestHandleGridError(t *testing.T) {
 }
 
 func TestHandleCreateItemStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	body := `{"name":"bolt","container_id":1,"tags":["m6"]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/items", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1005,7 +1021,7 @@ func TestHandleCreateItemStoreError(t *testing.T) {
 }
 
 func TestHandleGetItemStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	req := httptest.NewRequest(http.MethodGet, "/api/items/1", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -1013,7 +1029,7 @@ func TestHandleGetItemStoreError(t *testing.T) {
 }
 
 func TestHandleUpdateItemStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	body := `{"name":"bolt","container_id":1}`
 	req := httptest.NewRequest(http.MethodPut, "/api/items/1", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1023,7 +1039,7 @@ func TestHandleUpdateItemStoreError(t *testing.T) {
 }
 
 func TestHandleDeleteItemStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	req := httptest.NewRequest(http.MethodDelete, "/api/items/1", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -1031,7 +1047,7 @@ func TestHandleDeleteItemStoreError(t *testing.T) {
 }
 
 func TestHandleAddTagStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	body := `{"name":"m6"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/items/1/tags", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1041,7 +1057,7 @@ func TestHandleAddTagStoreError(t *testing.T) {
 }
 
 func TestHandleRemoveTagStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	req := httptest.NewRequest(http.MethodDelete, "/api/items/1/tags/m6", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -1049,7 +1065,7 @@ func TestHandleRemoveTagStoreError(t *testing.T) {
 }
 
 func TestHandleListContainerItemsStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	req := httptest.NewRequest(http.MethodGet, "/api/containers/1/items", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -1057,7 +1073,7 @@ func TestHandleListContainerItemsStoreError(t *testing.T) {
 }
 
 func TestHandleListItemsStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	req := httptest.NewRequest(http.MethodGet, "/api/items", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -1065,7 +1081,7 @@ func TestHandleListItemsStoreError(t *testing.T) {
 }
 
 func TestHandleSearchStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	req := httptest.NewRequest(http.MethodGet, "/api/search?q=bolt", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -1073,7 +1089,7 @@ func TestHandleSearchStoreError(t *testing.T) {
 }
 
 func TestHandleListTagsStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	req := httptest.NewRequest(http.MethodGet, "/api/tags", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -1081,7 +1097,7 @@ func TestHandleListTagsStoreError(t *testing.T) {
 }
 
 func TestHandleResizeShelfStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	body := `{"rows":5,"cols":10}`
 	req := httptest.NewRequest(http.MethodPut, "/api/shelf/resize", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1167,7 +1183,7 @@ func TestHandleUpdateAuthSettingsInvalidJSON(t *testing.T) {
 }
 
 func TestHandleGetAuthSettingsStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	req := httptest.NewRequest(http.MethodGet, "/api/shelf/auth", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -1175,7 +1191,7 @@ func TestHandleGetAuthSettingsStoreError(t *testing.T) {
 }
 
 func TestHandleUpdateAuthSettingsStoreError(t *testing.T) {
-	router := NewRouter(errStore())
+	router := errRouter()
 	body := `{"enabled":true,"username":"admin","password":"Secret123!@#"}`
 	req := httptest.NewRequest(http.MethodPut, "/api/shelf/auth", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
