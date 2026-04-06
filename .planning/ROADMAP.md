@@ -108,7 +108,7 @@ Plans:
 
 - [x] **Phase 11: Session Store Interface** - Extract session management into pluggable interface with memory implementation and configurable TTL (completed 2026-04-05)
 - [x] **Phase 12: Search Enhancement** - Multi-tag AND filtering, description search, batch query optimization (completed 2026-04-05)
-- [ ] **Phase 13: Admin Panel Shell** - Dedicated /admin page with shelf settings migrated from grid modal
+- [x] **Phase 13: Admin Panel Shell** - Dedicated /admin page with shelf settings migrated from grid modal (completed 2026-04-06)
 - [ ] **Phase 14: OIDC Authentication** - Login via OIDC provider with PKCE, local auth fallback, admin config UI
 - [ ] **Phase 15: Data Export/Import** - JSON export download and validated import upload in admin panel
 - [ ] **Phase 16: Redis Sessions** - Optional Redis-backed sessions with active session listing and revocation
@@ -153,7 +153,10 @@ Plans:
   2. Shelf settings (grid resize, rename) work from the admin page identically to how they worked from the grid modal
   3. The grid page no longer contains the settings gear/modal -- settings live exclusively in admin
   4. Navigation between the grid page and admin page is available from both directions
-**Plans**: TBD
+**Plans:** 2/2 plans complete
+Plans:
+- [x] 13-01-PLAN.md — Create admin page (handler, template, CSS, JS with shelf/auth/resize forms)
+- [x] 13-02-PLAN.md — Migrate grid page (remove settings, add Admin link, visual verification)
 **UI hint**: yes
 
 ### Phase 14: OIDC Authentication
@@ -223,7 +226,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 10. Resilience | v1.0 | 2/2 | Complete | 2026-04-03 |
 | 11. Session Store Interface | v1.1 | 2/2 | Complete    | 2026-04-05 |
 | 12. Search Enhancement | v1.1 | 2/2 | Complete    | 2026-04-05 |
-| 13. Admin Panel Shell | v1.1 | 0/0 | Not started | - |
+| 13. Admin Panel Shell | v1.1 | 2/2 | Complete    | 2026-04-06 |
 | 14. OIDC Authentication | v1.1 | 0/0 | Not started | - |
 | 15. Data Export/Import | v1.1 | 0/0 | Not started | - |
 | 16. Redis Sessions | v1.1 | 0/0 | Not started | - |
