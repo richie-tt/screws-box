@@ -7,6 +7,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /screws-box ./cmd/screwsbox
 
 FROM scratch
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /screws-box /screws-box
 EXPOSE 8080
 ENTRYPOINT ["/screws-box"]
