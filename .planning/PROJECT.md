@@ -87,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-05 after Phase 11 (Session Store Interface) complete — session management abstracted behind Store interface with MemoryStore, DI via Server struct*
+*Last updated: 2026-04-06 after Phase 13 (Admin Panel Shell) complete — dedicated /admin page with sidebar nav, shelf/auth settings migrated from grid page, bidirectional navigation*
