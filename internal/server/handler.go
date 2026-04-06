@@ -219,6 +219,46 @@ func (srv *Server) handleGrid() http.HandlerFunc {
 	}
 }
 
+// AdminData is the view model for the admin template.
+type AdminData struct {
+	ShelfName       string
+	Rows            int
+	Cols            int
+	AuthEnabled     bool
+	AuthUser        string
+	AuthHasPassword bool
+}
+
+func (srv *Server) handleAdmin() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		data, err := srv.store.GetGridData()
+		if err != nil {
+			slog.Error("failed to load admin data", "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		adminData := AdminData{
+			ShelfName:       data.ShelfName,
+			Rows:            data.Rows,
+			Cols:            data.Cols,
+			AuthEnabled:     data.AuthEnabled,
+			AuthUser:        data.AuthUser,
+			AuthHasPassword: data.AuthHasPassword,
+		}
+		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
+			"layout.html", "admin.html")
+		if err != nil {
+			slog.Error("admin template parse error", "err", err)
+			http.Error(w, "template error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := tmpl.Execute(w, adminData); err != nil {
+			slog.Error("admin template execute error", "err", err)
+		}
+	}
+}
+
 // --- API handlers ---
 
 func (srv *Server) handleCreateItem() http.HandlerFunc {

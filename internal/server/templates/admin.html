@@ -1,0 +1,110 @@
+{{define "title"}}Screws Box -- Admin{{end}}
+
+{{define "app_title"}}Screws Box -- Admin{{end}}
+
+{{define "extra_head"}}
+<link rel="stylesheet" href="/static/css/admin.css">
+<script src="/static/js/admin.js" defer></script>
+{{end}}
+
+{{define "header_actions"}}
+<a href="/" class="ghost back-link" title="Back to Grid">
+    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 1L2 4l3 3"/>
+    </svg>
+    Back to Grid
+</a>
+{{if .AuthEnabled}}
+<a href="/logout" class="ghost" aria-label="Sign out" title="Sign out">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 14H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h3"/>
+        <polyline points="10 11 14 8 10 5"/>
+        <line x1="14" y1="8" x2="6" y2="8"/>
+    </svg>
+</a>
+{{end}}
+{{end}}
+
+{{define "content"}}
+<div class="admin-layout">
+    <aside class="admin-sidebar">
+        <nav class="admin-nav" aria-label="Admin sections">
+            <a href="#shelf" class="admin-nav-item active">Shelf Settings</a>
+            <a href="#auth" class="admin-nav-item">Authentication</a>
+            <span class="admin-nav-item disabled" aria-disabled="true">
+                Sessions
+                <small>coming soon</small>
+            </span>
+        </nav>
+    </aside>
+    <div class="admin-content">
+        <section class="admin-card" id="shelf">
+            <h2>Shelf Settings</h2>
+            <form id="shelf-name-form" class="admin-form">
+                <div class="form-group">
+                    <label for="shelf-name-input">Shelf Name</label>
+                    <input type="text" id="shelf-name-input" name="shelf_name" value="{{.ShelfName}}">
+                </div>
+                <div class="admin-form-actions">
+                    <button type="submit" class="btn">Save Name</button>
+                    <span class="admin-form-feedback" role="status" aria-live="polite"></span>
+                </div>
+            </form>
+            <hr class="admin-divider">
+            <form id="resize-form" class="admin-form">
+                <div class="form-group">
+                    <label for="resize-rows">Rows</label>
+                    <input type="number" id="resize-rows" name="rows" min="1" max="26" value="{{.Rows}}">
+                </div>
+                <div class="form-group">
+                    <label for="resize-cols">Columns</label>
+                    <input type="number" id="resize-cols" name="cols" min="1" max="26" value="{{.Cols}}">
+                </div>
+                <p class="text-muted" id="resize-current">Currently {{.Rows}} x {{.Cols}}</p>
+                <div class="admin-form-actions">
+                    <button type="submit" class="btn">Resize Grid</button>
+                    <span class="admin-form-feedback" role="status" aria-live="polite"></span>
+                </div>
+            </form>
+        </section>
+
+        <section class="admin-card" id="auth">
+            <h2>Authentication</h2>
+            <form id="auth-form" class="admin-form">
+                <div class="form-group">
+                    <label class="toggle-label" for="auth-enabled">
+                        <input type="checkbox" id="auth-enabled" name="enabled" {{if .AuthEnabled}}checked{{end}}>
+                        <span class="toggle-switch"></span>
+                        Enable Authentication
+                    </label>
+                </div>
+                <div class="auth-fields" {{if not .AuthEnabled}}hidden{{end}}>
+                    <div class="form-group">
+                        <label for="auth-username">Username</label>
+                        <input type="text" id="auth-username" name="username" value="{{.AuthUser}}" autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-password">Password</label>
+                        <input type="password" id="auth-password" name="password" placeholder="Enter new password (leave blank to keep current)" autocomplete="new-password">
+                    </div>
+                </div>
+                <div class="admin-form-actions">
+                    <button type="submit" class="btn">Save Auth Settings</button>
+                    <span class="admin-form-feedback" role="status" aria-live="polite"></span>
+                </div>
+            </form>
+        </section>
+    </div>
+</div>
+
+<div class="resize-modal-overlay" id="resize-modal-overlay">
+    <div class="resize-modal-dialog" role="dialog" aria-labelledby="resize-modal-title">
+        <h3 id="resize-modal-title">Resize will remove items</h3>
+        <div id="resize-modal-body"></div>
+        <div class="resize-modal-actions">
+            <button type="button" class="btn ghost" id="resize-modal-cancel">Keep Current Size</button>
+            <button type="button" class="btn danger" id="resize-modal-confirm">Resize Anyway</button>
+        </div>
+    </div>
+</div>
+{{end}}
