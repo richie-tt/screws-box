@@ -77,6 +77,8 @@ func (srv *Server) Router() http.Handler {
 				r.Get("/oidc/config", srv.handleGetOIDCConfig())
 				r.Put("/oidc/config", srv.handleUpdateOIDCConfig())
 				r.Get("/export", srv.handleExport())
+				r.Post("/import/validate", srv.handleImportValidate())
+				r.Post("/import/confirm", srv.handleImportConfirm())
 			})
 		})
 	})
