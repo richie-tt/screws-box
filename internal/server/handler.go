@@ -3,12 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"screws-box/internal/model"
 	oidcpkg "screws-box/internal/oidc"
+	"screws-box/internal/store"
 	"strconv"
 	"strings"
 
@@ -32,6 +34,9 @@ type StoreService interface {
 	SearchItemsByTags(ctx context.Context, query string, tags []string) ([]model.ItemResponse, error)
 	SearchItemsBatch(ctx context.Context, query string, tags []string) (*model.SearchResponse, error)
 	ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error)
+	RenameTag(ctx context.Context, tagID int64, newName string) error
+	MergeTags(ctx context.Context, sourceID, targetID int64) error
+	DeleteUnusedTag(ctx context.Context, tagID int64) error
 	ResizeShelf(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	UpdateShelfName(ctx context.Context, name string) error
 	GetAuthSettings(ctx context.Context) (*model.AuthSettings, error)
@@ -550,6 +555,145 @@ func (srv *Server) handleListTags() http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, tags)
+	}
+}
+
+// RenameTagRequest is the request body for PUT /api/tags/{tagID}.
+type RenameTagRequest struct {
+	Name       string `json:"name"`
+	ForceMerge bool   `json:"force_merge,omitempty"`
+}
+
+// findTagByName returns the first tag with an exact name match, or nil.
+func (srv *Server) findTagByName(ctx context.Context, name string) (*model.TagResponse, error) {
+	tags, err := srv.store.ListTags(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range tags {
+		if t.Name == name {
+			return &t, nil
+		}
+	}
+	return nil, nil
+}
+
+// findTagByID returns the tag with the given ID, or nil.
+func (srv *Server) findTagByID(ctx context.Context, id int64) (*model.TagResponse, error) {
+	tags, err := srv.store.ListTags(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range tags {
+		if t.ID == id {
+			return &t, nil
+		}
+	}
+	return nil, nil
+}
+
+func (srv *Server) handleRenameTag() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tagIDStr := chi.URLParam(r, "tagID")
+		tagID, err := strconv.ParseInt(tagIDStr, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid tag ID")
+			return
+		}
+
+		var req RenameTagRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+
+		// Validate tag name (same rules as validateAddTag)
+		req.Name = strings.ToLower(strings.TrimSpace(req.Name))
+		if req.Name == "" {
+			writeError(w, http.StatusBadRequest, "tag must not be empty")
+			return
+		}
+		if len(req.Name) > 50 {
+			writeError(w, http.StatusBadRequest, "tag must be at most 50 characters")
+			return
+		}
+
+		ctx := r.Context()
+
+		if req.ForceMerge {
+			// Look up target tag by name
+			target, err := srv.findTagByName(ctx, req.Name)
+			if err != nil {
+				slog.Error("find target tag", "err", err)
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if target == nil {
+				writeError(w, http.StatusNotFound, "target tag not found")
+				return
+			}
+			if err := srv.store.MergeTags(ctx, tagID, target.ID); err != nil {
+				slog.Error("merge tags", "err", err)
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return
+		}
+
+		// Try rename
+		if err := srv.store.RenameTag(ctx, tagID, req.Name); err != nil {
+			// Check for UNIQUE constraint violation (name conflict)
+			if strings.Contains(err.Error(), "UNIQUE constraint") {
+				// Look up existing tag with that name
+				target, lookupErr := srv.findTagByName(ctx, req.Name)
+				if lookupErr != nil {
+					slog.Error("find conflicting tag", "err", lookupErr)
+					writeError(w, http.StatusInternalServerError, "internal error")
+					return
+				}
+				source, lookupErr := srv.findTagByID(ctx, tagID)
+				if lookupErr != nil {
+					slog.Error("find source tag", "err", lookupErr)
+					writeError(w, http.StatusInternalServerError, "internal error")
+					return
+				}
+				writeJSON(w, http.StatusConflict, map[string]any{
+					"merge_needed": true,
+					"target":       target,
+					"source":       source,
+				})
+				return
+			}
+			slog.Error("rename tag", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
+}
+
+func (srv *Server) handleDeleteTag() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tagIDStr := chi.URLParam(r, "tagID")
+		tagID, err := strconv.ParseInt(tagIDStr, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid tag ID")
+			return
+		}
+
+		if err := srv.store.DeleteUnusedTag(r.Context(), tagID); err != nil {
+			if errors.Is(err, store.ErrTagInUse) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "tag is in use"})
+				return
+			}
+			slog.Error("delete tag", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

@@ -69,6 +69,10 @@ func (srv *Server) Router() http.Handler {
 					})
 				})
 				r.Get("/tags", srv.handleListTags())
+				r.Route("/tags/{tagID}", func(r chi.Router) {
+					r.Put("/", srv.handleRenameTag())
+					r.Delete("/", srv.handleDeleteTag())
+				})
 				r.Get("/search", srv.handleSearch())
 				r.Get("/containers/{containerID}/items", srv.handleListContainerItems())
 				r.Put("/shelf/resize", srv.handleResizeShelf())

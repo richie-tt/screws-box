@@ -896,6 +896,9 @@ type mockStore struct {
 	upsertOIDCUserFn         func(ctx context.Context, user *model.OIDCUser) (*model.OIDCUser, error)
 	getOIDCUserBySubFn       func(ctx context.Context, sub, issuer string) (*model.OIDCUser, error)
 	getOrCreateEncKeyFn      func(ctx context.Context) ([]byte, error)
+	renameTagFn              func(ctx context.Context, tagID int64, newName string) error
+	mergeTagsFn              func(ctx context.Context, sourceID, targetID int64) error
+	deleteUnusedTagFn        func(ctx context.Context, tagID int64) error
 }
 
 func (m *mockStore) Ping(ctx context.Context) error {
@@ -1032,6 +1035,27 @@ func (m *mockStore) ExportAllData(_ context.Context) (*model.ExportData, error) 
 
 func (m *mockStore) ImportAllData(_ context.Context, _ *model.ExportData) error {
 	return fmt.Errorf("not implemented")
+}
+
+func (m *mockStore) RenameTag(ctx context.Context, tagID int64, newName string) error {
+	if m.renameTagFn != nil {
+		return m.renameTagFn(ctx, tagID, newName)
+	}
+	return nil
+}
+
+func (m *mockStore) MergeTags(ctx context.Context, sourceID, targetID int64) error {
+	if m.mergeTagsFn != nil {
+		return m.mergeTagsFn(ctx, sourceID, targetID)
+	}
+	return nil
+}
+
+func (m *mockStore) DeleteUnusedTag(ctx context.Context, tagID int64) error {
+	if m.deleteUnusedTagFn != nil {
+		return m.deleteUnusedTagFn(ctx, tagID)
+	}
+	return nil
 }
 
 func errStore() *mockStore {
