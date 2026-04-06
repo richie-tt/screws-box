@@ -110,7 +110,7 @@ Plans:
 - [x] **Phase 12: Search Enhancement** - Multi-tag AND filtering, description search, batch query optimization (completed 2026-04-05)
 - [x] **Phase 13: Admin Panel Shell** - Dedicated /admin page with shelf settings migrated from grid modal (completed 2026-04-06)
 - [x] **Phase 14: OIDC Authentication** - Login via OIDC provider with PKCE, local auth fallback, admin config UI (completed 2026-04-06)
-- [ ] **Phase 15: Data Export/Import** - JSON export download and validated import upload in admin panel
+- [x] **Phase 15: Data Export/Import** - JSON export download and validated import upload in admin panel (completed 2026-04-06)
 - [ ] **Phase 16: Redis Sessions** - Optional Redis-backed sessions with active session listing and revocation
 - [ ] **Phase 17: Documentation** - README.md with developer setup, user guide, configuration reference
 
@@ -186,10 +186,10 @@ Plans:
   2. Uploading a previously exported JSON file restores the data with validation feedback (success count, skipped items, errors)
   3. Importing invalid JSON (wrong format, missing fields) shows a clear error message without corrupting existing data
   4. A round-trip test works: export -> clear data -> import -> all items and tags are back in correct containers
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 15-01-PLAN.md — Export model structs, store export/import methods, export handler, tests
-- [ ] 15-02-PLAN.md — Import handlers (validate/confirm), admin UI (template, CSS, JS)
+- [x] 15-01-PLAN.md — Export model structs, store export/import methods, export handler, tests
+- [x] 15-02-PLAN.md — Import handlers (validate/confirm), admin UI (template, CSS, JS)
 **UI hint**: yes
 
 ### Phase 16: Redis Sessions
@@ -237,7 +237,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 12. Search Enhancement | v1.1 | 2/2 | Complete    | 2026-04-05 |
 | 13. Admin Panel Shell | v1.1 | 2/2 | Complete    | 2026-04-06 |
 | 14. OIDC Authentication | v1.1 | 4/4 | Complete    | 2026-04-06 |
-| 15. Data Export/Import | v1.1 | 0/2 | Planned     | - |
+| 15. Data Export/Import | v1.1 | 2/2 | Complete    | 2026-04-06 |
 | 16. Redis Sessions | v1.1 | 0/0 | Not started | - |
 | 17. Documentation | v1.1 | 0/0 | Not started | - |
 
