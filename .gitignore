@@ -5,6 +5,7 @@ screws_box.db-*
 *.db-wal
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 *.crt

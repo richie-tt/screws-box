@@ -1,0 +1,23 @@
+services:
+  screws-box:
+    build: .
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - DB_PATH=/data/screws_box.db
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  redis-data:
