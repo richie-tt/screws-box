@@ -32,7 +32,7 @@ Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elem
 
 **Target features:**
 - Przebudowa search — tag filter bar (multi-tag AND), main search szuka też w description
-- OIDC authentication — Authelia, Google, GitHub (konfigurowalny provider)
+- ~~OIDC authentication — Authelia, Google, GitHub (konfigurowalny provider)~~ ✓ Phase 14
 - Admin panel jako osobna strona — auth settings, shelf settings, data export/import, active sessions
 - Redis session store — opcjonalny (env REDIS_URL), fallback in-memory
 - README.md — developer + user dokumentacja
@@ -87,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-06 after Phase 13 (Admin Panel Shell) complete — dedicated /admin page with sidebar nav, shelf/auth settings migrated from grid page, bidirectional navigation*
+*Last updated: 2026-04-06 after Phase 14 (OIDC Authentication) complete — full OIDC login via Authelia with PKCE/state/nonce, admin config UI with discovery validation, userinfo endpoint fallback*
