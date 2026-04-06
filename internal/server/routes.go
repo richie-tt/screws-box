@@ -76,6 +76,7 @@ func (srv *Server) Router() http.Handler {
 				r.Put("/shelf/auth", srv.handleUpdateAuthSettings())
 				r.Get("/oidc/config", srv.handleGetOIDCConfig())
 				r.Put("/oidc/config", srv.handleUpdateOIDCConfig())
+				r.Get("/export", srv.handleExport())
 			})
 		})
 	})
