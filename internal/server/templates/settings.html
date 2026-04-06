@@ -1,10 +1,10 @@
-{{define "title"}}Screws Box -- Admin{{end}}
+{{define "title"}}Screws Box -- Settings{{end}}
 
-{{define "app_title"}}Screws Box -- Admin{{end}}
+{{define "app_title"}}Screws Box -- Settings{{end}}
 
 {{define "extra_head"}}
-<link rel="stylesheet" href="/static/css/admin.css">
-<script src="/static/js/admin.js" defer></script>
+<link rel="stylesheet" href="/static/css/settings.css">
+<script src="/static/js/settings.js" defer></script>
 {{end}}
 
 {{define "header_actions"}}
@@ -27,30 +27,30 @@
 {{end}}
 
 {{define "content"}}
-<div class="admin-layout">
-    <aside class="admin-sidebar">
-        <nav class="admin-nav" aria-label="Admin sections">
-            <a href="#shelf" class="admin-nav-item active">Shelf Settings</a>
-            <a href="#auth" class="admin-nav-item">Authentication</a>
-            <a href="#data" class="admin-nav-item">Data</a>
-            <a href="#sessions" class="admin-nav-item">Sessions <small class="nav-badge" aria-live="polite">{{.SessionCount}}</small></a>
+<div class="settings-layout">
+    <aside class="settings-sidebar">
+        <nav class="settings-nav" aria-label="Settings sections">
+            <a href="#shelf" class="settings-nav-item active">Shelf Settings</a>
+            <a href="#auth" class="settings-nav-item">Authentication</a>
+            <a href="#data" class="settings-nav-item">Data</a>
+            <a href="#sessions" class="settings-nav-item">Sessions <small class="nav-badge" aria-live="polite">{{.SessionCount}}</small></a>
         </nav>
     </aside>
-    <div class="admin-content">
-        <section class="admin-card" id="shelf">
+    <div class="settings-content">
+        <section class="settings-card" id="shelf">
             <h2>Shelf Settings</h2>
-            <form id="shelf-name-form" class="admin-form">
+            <form id="shelf-name-form" class="settings-form">
                 <div class="form-group">
                     <label for="shelf-name-input">Shelf Name</label>
                     <input type="text" id="shelf-name-input" name="shelf_name" value="{{.ShelfName}}">
                 </div>
-                <div class="admin-form-actions">
+                <div class="settings-form-actions">
                     <button type="submit" class="btn">Save Name</button>
-                    <span class="admin-form-feedback" role="status" aria-live="polite"></span>
+                    <span class="settings-form-feedback" role="status" aria-live="polite"></span>
                 </div>
             </form>
-            <hr class="admin-divider">
-            <form id="resize-form" class="admin-form">
+            <hr class="settings-divider">
+            <form id="resize-form" class="settings-form">
                 <div class="form-group">
                     <label for="resize-rows">Rows</label>
                     <input type="number" id="resize-rows" name="rows" min="1" max="26" value="{{.Rows}}">
@@ -60,16 +60,16 @@
                     <input type="number" id="resize-cols" name="cols" min="1" max="26" value="{{.Cols}}">
                 </div>
                 <p class="text-muted" id="resize-current">Currently {{.Rows}} x {{.Cols}}</p>
-                <div class="admin-form-actions">
+                <div class="settings-form-actions">
                     <button type="submit" class="btn">Resize Grid</button>
-                    <span class="admin-form-feedback" role="status" aria-live="polite"></span>
+                    <span class="settings-form-feedback" role="status" aria-live="polite"></span>
                 </div>
             </form>
         </section>
 
-        <section class="admin-card" id="auth">
+        <section class="settings-card" id="auth">
             <h2>Authentication</h2>
-            <form id="auth-form" class="admin-form">
+            <form id="auth-form" class="settings-form">
                 <div class="form-group">
                     <label class="toggle-label" for="auth-enabled">
                         <input type="checkbox" id="auth-enabled" name="enabled" {{if .AuthEnabled}}checked{{end}}>
@@ -87,14 +87,14 @@
                         <input type="password" id="auth-password" name="password" placeholder="Enter new password (leave blank to keep current)" autocomplete="new-password">
                     </div>
                 </div>
-                <div class="admin-form-actions">
+                <div class="settings-form-actions">
                     <button type="submit" class="btn">Save Auth Settings</button>
-                    <span class="admin-form-feedback" role="status" aria-live="polite"></span>
+                    <span class="settings-form-feedback" role="status" aria-live="polite"></span>
                 </div>
             </form>
-            <hr class="admin-divider">
-            <h3 class="admin-subsection-title">OIDC / SSO</h3>
-            <form id="oidc-form" class="admin-form">
+            <hr class="settings-divider">
+            <h3 class="settings-subsection-title">OIDC / SSO</h3>
+            <form id="oidc-form" class="settings-form">
                 <div class="form-group">
                     <label class="toggle-label" for="oidc-enabled">
                         <input type="checkbox" id="oidc-enabled" name="oidc_enabled" {{if .OIDCEnabled}}checked{{end}}>
@@ -132,22 +132,22 @@
                         {{end}}
                     </div>
                 </div>
-                <div class="admin-form-actions">
+                <div class="settings-form-actions">
                     <button type="submit" class="btn" id="oidc-save-btn">Save OIDC Settings</button>
-                    <span class="admin-form-feedback" role="status" aria-live="polite"></span>
+                    <span class="settings-form-feedback" role="status" aria-live="polite"></span>
                 </div>
             </form>
         </section>
 
-        <section class="admin-card" id="data">
+        <section class="settings-card" id="data">
             <h2>Data Export</h2>
             <p class="text-muted">Download a complete backup of all shelves, containers, items, and tags.</p>
-            <div class="admin-form-actions">
+            <div class="settings-form-actions">
                 <button type="button" class="btn" id="export-btn">Export JSON</button>
-                <span class="admin-form-feedback" id="export-feedback" role="status" aria-live="polite"></span>
+                <span class="settings-form-feedback" id="export-feedback" role="status" aria-live="polite"></span>
             </div>
 
-            <hr class="admin-divider">
+            <hr class="settings-divider">
 
             <h2>Data Import</h2>
             <p class="text-muted">Upload a previously exported JSON file to restore data.</p>
@@ -157,14 +157,14 @@
                     <label for="import-file">Choose backup file</label>
                     <input type="file" id="import-file" accept=".json">
                 </div>
-                <div class="admin-form-actions">
+                <div class="settings-form-actions">
                     <button type="button" class="btn secondary" id="validate-btn" disabled>Validate File</button>
-                    <span class="admin-form-feedback" id="import-feedback" role="status" aria-live="polite"></span>
+                    <span class="settings-form-feedback" id="import-feedback" role="status" aria-live="polite"></span>
                 </div>
             </div>
 
             <div id="import-summary-area" hidden>
-                <h3 class="admin-subsection-title">Import Summary</h3>
+                <h3 class="settings-subsection-title">Import Summary</h3>
                 <div class="import-summary">
                     <dl>
                         <dt>Shelf</dt>
@@ -187,15 +187,15 @@
             </div>
 
             <div id="import-error-area" hidden>
-                <h3 class="admin-subsection-title">Validation Failed</h3>
+                <h3 class="settings-subsection-title">Validation Failed</h3>
                 <ul class="validation-errors" id="validation-errors-list"></ul>
-                <div class="admin-form-actions">
+                <div class="settings-form-actions">
                     <button type="button" class="btn secondary" id="import-retry-btn">Try Another File</button>
                 </div>
             </div>
         </section>
 
-        <section class="admin-card" id="sessions" data-ttl="{{.SessionTTL}}">
+        <section class="settings-card" id="sessions" data-ttl="{{.SessionTTL}}">
             <div class="sessions-header">
                 <h2>Sessions</h2>
                 <div class="sessions-header-actions">
@@ -250,9 +250,9 @@
                     </tbody>
                 </table>
             </div>
-            <div class="admin-form-actions" id="sessions-bulk-actions">
+            <div class="settings-form-actions" id="sessions-bulk-actions">
                 <button type="button" class="btn danger" id="revoke-all-btn">Revoke All Others</button>
-                <span class="admin-form-feedback" id="sessions-feedback" role="status" aria-live="polite"></span>
+                <span class="settings-form-feedback" id="sessions-feedback" role="status" aria-live="polite"></span>
             </div>
             {{end}}
         </section>
