@@ -312,29 +312,6 @@ A `.golangci.yml` configuration is included. Run with:
 golangci-lint run ./...
 ```
 
-### Project Structure
-
-```
-screws-box/
-├── cmd/screwsbox/
-│   └── main.go              # Entry point, env var parsing, CLI flags
-├── internal/
-│   ├── model/               # Data models (Cell, Item, Container, OIDCConfig, ExportData)
-│   ├── oidc/                # OIDC provider, cookie helpers
-│   ├── server/              # HTTP handlers, routes, middleware
-│   │   ├── static/css/      # app.css (design system), grid.css, admin.css, login.css
-│   │   ├── static/js/       # grid.js, admin.js
-│   │   └── templates/       # layout.html, grid.html, admin.html, login.html
-│   ├── session/             # Session store interface + memory and Redis implementations
-│   └── store/               # SQLite data access layer
-├── Dockerfile               # Multi-stage build (golang:alpine -> scratch)
-├── docker-compose.yml       # Compose config with optional Redis profile
-├── .env.example             # Environment variable template
-├── Makefile                 # Build and SBOM targets
-├── go.mod / go.sum
-└── .golangci.yml
-```
-
 ### Key Dependencies
 
 | Package | Purpose |
