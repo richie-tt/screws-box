@@ -202,7 +202,10 @@ Plans:
   3. After app restart with Redis enabled, existing sessions survive -- user does not need to re-login
   4. Admin panel shows a list of active sessions with creation time and last activity
   5. Admin can revoke any session from the list -- the revoked user is forced to log in again on next request
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 16-01-PLAN.md — Store interface extension, RedisStore, MemoryStore.List, REDIS_URL wiring
+- [ ] 16-02-PLAN.md — Session API handlers, admin sessions UI (table, revoke, badges)
 **UI hint**: yes
 
 ### Phase 17: Documentation
@@ -238,7 +241,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 13. Admin Panel Shell | v1.1 | 2/2 | Complete    | 2026-04-06 |
 | 14. OIDC Authentication | v1.1 | 4/4 | Complete    | 2026-04-06 |
 | 15. Data Export/Import | v1.1 | 2/2 | Complete    | 2026-04-06 |
-| 16. Redis Sessions | v1.1 | 0/0 | Not started | - |
+| 16. Redis Sessions | v1.1 | 0/2 | Planning complete | - |
 | 17. Documentation | v1.1 | 0/0 | Not started | - |
 
 ---
