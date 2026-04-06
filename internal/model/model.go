@@ -64,6 +64,28 @@ type AuthSettings struct {
 	HasPassword bool   `json:"has_password"`
 }
 
+// OIDCConfig holds OIDC provider configuration.
+type OIDCConfig struct {
+	Enabled      bool   `json:"enabled"`
+	IssuerURL    string `json:"issuer_url"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret,omitempty"`
+	DisplayName  string `json:"display_name"`
+	SecretStatus string `json:"secret_status,omitempty"` // "configured" or "not_set"
+}
+
+// OIDCUser represents a user authenticated via OIDC.
+type OIDCUser struct {
+	ID          int64  `json:"id"`
+	Sub         string `json:"sub"`
+	Issuer      string `json:"issuer"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
 // Row represents one row in the grid display.
 type Row struct {
 	Letter string

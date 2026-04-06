@@ -1151,3 +1151,174 @@ func TestSearchBatchNullDescription(t *testing.T) {
 	assert.NotContains(t, resp.Results[0].MatchedOn, "description")
 	assert.Nil(t, resp.Results[0].Description)
 }
+
+func TestOIDCConfigSaveAndGet(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	cfg := &model.OIDCConfig{
+		Enabled:      true,
+		IssuerURL:    "https://auth.example.com",
+		ClientID:     "my-client-id",
+		ClientSecret: "super-secret",
+		DisplayName:  "Authelia",
+	}
+	err := s.SaveOIDCConfig(ctx, cfg)
+	require.NoError(t, err)
+
+	got, err := s.GetOIDCConfig(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.True(t, got.Enabled)
+	assert.Equal(t, "https://auth.example.com", got.IssuerURL)
+	assert.Equal(t, "my-client-id", got.ClientID)
+	assert.Equal(t, "super-secret", got.ClientSecret)
+	assert.Equal(t, "Authelia", got.DisplayName)
+	assert.Equal(t, "configured", got.SecretStatus)
+}
+
+func TestOIDCConfigGetDefault(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	got, err := s.GetOIDCConfig(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.False(t, got.Enabled)
+	assert.Empty(t, got.IssuerURL)
+	assert.Empty(t, got.ClientID)
+	assert.Empty(t, got.ClientSecret)
+	assert.Empty(t, got.DisplayName)
+	assert.Equal(t, "not_set", got.SecretStatus)
+}
+
+func TestOIDCConfigMaskedHidesSecret(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	cfg := &model.OIDCConfig{
+		Enabled:      true,
+		IssuerURL:    "https://auth.example.com",
+		ClientID:     "my-client-id",
+		ClientSecret: "super-secret",
+		DisplayName:  "Authelia",
+	}
+	require.NoError(t, s.SaveOIDCConfig(ctx, cfg))
+
+	got, err := s.GetOIDCConfigMasked(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Empty(t, got.ClientSecret, "masked config should not return client secret")
+	assert.Equal(t, "configured", got.SecretStatus)
+}
+
+func TestOIDCConfigSavePreservesSecret(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	cfg := &model.OIDCConfig{
+		Enabled:      true,
+		IssuerURL:    "https://auth.example.com",
+		ClientID:     "my-client-id",
+		ClientSecret: "original-secret",
+		DisplayName:  "Authelia",
+	}
+	require.NoError(t, s.SaveOIDCConfig(ctx, cfg))
+
+	cfg2 := &model.OIDCConfig{
+		Enabled:      true,
+		IssuerURL:    "https://auth.example.com",
+		ClientID:     "my-client-id",
+		ClientSecret: "",
+		DisplayName:  "Updated Authelia",
+	}
+	require.NoError(t, s.SaveOIDCConfig(ctx, cfg2))
+
+	got, err := s.GetOIDCConfig(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "original-secret", got.ClientSecret, "empty secret should preserve existing")
+	assert.Equal(t, "Updated Authelia", got.DisplayName)
+}
+
+func TestUpsertOIDCUser(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	user := &model.OIDCUser{
+		Sub:         "user123",
+		Issuer:      "https://auth.example.com",
+		Email:       "alice@example.com",
+		DisplayName: "Alice",
+		AvatarURL:   "https://example.com/avatar.png",
+	}
+	got, err := s.UpsertOIDCUser(ctx, user)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "user123", got.Sub)
+	assert.Equal(t, "https://auth.example.com", got.Issuer)
+	assert.Equal(t, "alice@example.com", got.Email)
+	assert.Equal(t, "Alice", got.DisplayName)
+	assert.NotEmpty(t, got.CreatedAt)
+
+	fetched, err := s.GetOIDCUserBySub(ctx, "user123", "https://auth.example.com")
+	require.NoError(t, err)
+	require.NotNil(t, fetched)
+	assert.Equal(t, "Alice", fetched.DisplayName)
+}
+
+func TestUpsertOIDCUserUpdates(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	user := &model.OIDCUser{
+		Sub:         "user123",
+		Issuer:      "https://auth.example.com",
+		Email:       "alice@example.com",
+		DisplayName: "Alice",
+	}
+	_, err := s.UpsertOIDCUser(ctx, user)
+	require.NoError(t, err)
+
+	user2 := &model.OIDCUser{
+		Sub:         "user123",
+		Issuer:      "https://auth.example.com",
+		Email:       "alice-new@example.com",
+		DisplayName: "Alice Updated",
+	}
+	got, err := s.UpsertOIDCUser(ctx, user2)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "Alice Updated", got.DisplayName)
+	assert.Equal(t, "alice-new@example.com", got.Email)
+}
+
+func TestGetOIDCUserBySub_NotFound(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	got, err := s.GetOIDCUserBySub(ctx, "nonexistent", "https://auth.example.com")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestGetOrCreateEncryptionKey(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	key1, err := s.GetOrCreateEncryptionKey(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, key1)
+
+	key2, err := s.GetOrCreateEncryptionKey(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, key1, key2, "second call should return same key")
+}
+
+func TestGetOrCreateEncryptionKey_Length(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	key, err := s.GetOrCreateEncryptionKey(ctx)
+	require.NoError(t, err)
+	assert.Len(t, key, 32, "encryption key should be 32 bytes (256 bits)")
+}
