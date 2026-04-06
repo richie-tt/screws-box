@@ -32,6 +32,7 @@
         <nav class="admin-nav" aria-label="Admin sections">
             <a href="#shelf" class="admin-nav-item active">Shelf Settings</a>
             <a href="#auth" class="admin-nav-item">Authentication</a>
+            <a href="#data" class="admin-nav-item">Data</a>
             <span class="admin-nav-item disabled" aria-disabled="true">
                 Sessions
                 <small>coming soon</small>
@@ -139,6 +140,62 @@
                     <span class="admin-form-feedback" role="status" aria-live="polite"></span>
                 </div>
             </form>
+        </section>
+
+        <section class="admin-card" id="data">
+            <h2>Data Export</h2>
+            <p class="text-muted">Download a complete backup of all shelves, containers, items, and tags.</p>
+            <div class="admin-form-actions">
+                <button type="button" class="btn" id="export-btn">Export JSON</button>
+                <span class="admin-form-feedback" id="export-feedback" role="status" aria-live="polite"></span>
+            </div>
+
+            <hr class="admin-divider">
+
+            <h2>Data Import</h2>
+            <p class="text-muted">Upload a previously exported JSON file to restore data.</p>
+
+            <div id="import-upload-area">
+                <div class="form-group">
+                    <label for="import-file">Choose backup file</label>
+                    <input type="file" id="import-file" accept=".json">
+                </div>
+                <div class="admin-form-actions">
+                    <button type="button" class="btn secondary" id="validate-btn" disabled>Validate File</button>
+                    <span class="admin-form-feedback" id="import-feedback" role="status" aria-live="polite"></span>
+                </div>
+            </div>
+
+            <div id="import-summary-area" hidden>
+                <h3 class="admin-subsection-title">Import Summary</h3>
+                <div class="import-summary">
+                    <dl>
+                        <dt>Shelf</dt>
+                        <dd id="summary-shelf"></dd>
+                        <dt>Containers</dt>
+                        <dd id="summary-containers"></dd>
+                        <dt>Items</dt>
+                        <dd id="summary-items"></dd>
+                        <dt>Tags</dt>
+                        <dd id="summary-tags"></dd>
+                    </dl>
+                </div>
+                <div class="import-warning" role="alert">
+                    This will replace ALL existing data. This cannot be undone.
+                </div>
+                <div class="import-actions">
+                    <button type="button" class="btn ghost" id="import-back-btn">Back to Upload</button>
+                    <button type="button" class="btn danger" id="import-confirm-btn">Replace All Data</button>
+                </div>
+            </div>
+
+            <div id="import-error-area" hidden>
+                <h3 class="admin-subsection-title">Validation Failed</h3>
+                <ul class="validation-errors" id="validation-errors-list"></ul>
+                <div class="admin-form-actions">
+                    <button type="button" class="btn secondary" id="import-retry-btn">Try Another File</button>
+                </div>
+            </div>
         </section>
     </div>
 </div>
