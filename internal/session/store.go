@@ -11,4 +11,6 @@ type Store interface {
 	Delete(ctx context.Context, id string) error
 	Touch(ctx context.Context, id string) error
 	DeleteByAuthMethod(ctx context.Context, method string) (int, error)
+	List(ctx context.Context) ([]*Session, error)
+	Close() error
 }

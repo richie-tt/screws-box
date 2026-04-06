@@ -18,7 +18,7 @@ func newTestManager(ttl time.Duration) (*Manager, *MemoryStore) {
 
 func TestManager_Create(t *testing.T) {
 	mgr, store := newTestManager(time.Hour)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/login", nil)
@@ -53,7 +53,7 @@ func TestManager_Create(t *testing.T) {
 
 func TestManager_Destroy(t *testing.T) {
 	mgr, store := newTestManager(time.Hour)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	// Create a session first
 	w := httptest.NewRecorder()
@@ -91,7 +91,7 @@ func TestManager_Destroy(t *testing.T) {
 
 func TestManager_GetUser(t *testing.T) {
 	mgr, store := newTestManager(time.Hour)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	// Create session
 	w := httptest.NewRecorder()
@@ -114,7 +114,7 @@ func TestManager_GetUser(t *testing.T) {
 
 func TestManager_GetUser_NoSession(t *testing.T) {
 	mgr, store := newTestManager(time.Hour)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	user := mgr.GetUser(r)
@@ -123,7 +123,7 @@ func TestManager_GetUser_NoSession(t *testing.T) {
 
 func TestManager_GetUser_ExpiredSession(t *testing.T) {
 	mgr, store := newTestManager(50 * time.Millisecond)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/login", nil)
@@ -146,7 +146,7 @@ func TestManager_GetUser_ExpiredSession(t *testing.T) {
 
 func TestManager_GetCSRFToken(t *testing.T) {
 	mgr, store := newTestManager(time.Hour)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/login", nil)
@@ -171,7 +171,7 @@ func TestManager_GetCSRFToken(t *testing.T) {
 
 func TestManager_GetCSRFToken_NoSession(t *testing.T) {
 	mgr, store := newTestManager(time.Hour)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	token := mgr.GetCSRFToken(r)
@@ -180,7 +180,7 @@ func TestManager_GetCSRFToken_NoSession(t *testing.T) {
 
 func TestManager_CreateSetsLocalAuthMethod(t *testing.T) {
 	mgr, store := newTestManager(time.Hour)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/login", nil)
@@ -205,7 +205,7 @@ func TestManager_CreateSetsLocalAuthMethod(t *testing.T) {
 
 func TestManager_CreateWithMethod_OIDC(t *testing.T) {
 	mgr, store := newTestManager(time.Hour)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/auth/callback", nil)
@@ -229,7 +229,7 @@ func TestManager_CreateWithMethod_OIDC(t *testing.T) {
 
 func TestManager_CreateWithMethod_SetsCookies(t *testing.T) {
 	mgr, store := newTestManager(time.Hour)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/auth/callback", nil)
@@ -260,7 +260,7 @@ func TestManager_CreateWithMethod_SetsCookies(t *testing.T) {
 
 func TestManager_GetUser_TouchesSession(t *testing.T) {
 	mgr, store := newTestManager(150 * time.Millisecond)
-	t.Cleanup(store.Close)
+	t.Cleanup(func() { store.Close() })
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/login", nil)

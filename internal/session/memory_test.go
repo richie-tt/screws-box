@@ -23,7 +23,7 @@ func newTestSession(id, username string) *Session {
 
 func TestMemoryStore_Create(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 	ctx := context.Background()
 
 	sess := newTestSession("sess1", "alice")
@@ -39,7 +39,7 @@ func TestMemoryStore_Create(t *testing.T) {
 
 func TestMemoryStore_Get_NotFound(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 
 	got, err := m.Get(context.Background(), "nonexistent")
 	require.NoError(t, err)
@@ -48,7 +48,7 @@ func TestMemoryStore_Get_NotFound(t *testing.T) {
 
 func TestMemoryStore_Delete(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 	ctx := context.Background()
 
 	sess := newTestSession("sess1", "alice")
@@ -64,7 +64,7 @@ func TestMemoryStore_Delete(t *testing.T) {
 
 func TestMemoryStore_Touch(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 	ctx := context.Background()
 
 	sess := newTestSession("sess1", "alice")
@@ -82,7 +82,7 @@ func TestMemoryStore_Touch(t *testing.T) {
 
 func TestMemoryStore_Expiry(t *testing.T) {
 	m := NewMemoryStore(50*time.Millisecond, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 	ctx := context.Background()
 
 	sess := newTestSession("sess1", "alice")
@@ -97,7 +97,7 @@ func TestMemoryStore_Expiry(t *testing.T) {
 
 func TestMemoryStore_SlidingWindow(t *testing.T) {
 	m := NewMemoryStore(100*time.Millisecond, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 	ctx := context.Background()
 
 	sess := newTestSession("sess1", "alice")
@@ -117,7 +117,7 @@ func TestMemoryStore_SlidingWindow(t *testing.T) {
 func TestMemoryStore_BackgroundCleanup(t *testing.T) {
 	// Use very short TTL and cleanup interval
 	m := NewMemoryStore(50*time.Millisecond, 100*time.Millisecond)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 	ctx := context.Background()
 
 	sess := newTestSession("sess1", "alice")
@@ -135,14 +135,21 @@ func TestMemoryStore_BackgroundCleanup(t *testing.T) {
 
 func TestMemoryStore_Close(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
-	m.Close()
+	err := m.Close()
+	require.NoError(t, err)
 	// Should not panic on double close — but we only call once.
 	// Just verify no goroutine leak by completing the test.
 }
 
+func TestMemoryStore_Close_ReturnsError(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	err := m.Close()
+	assert.NoError(t, err, "Close should return nil error")
+}
+
 func TestMemoryStore_DeleteByAuthMethod(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 	ctx := context.Background()
 
 	// Create 2 local + 1 oidc session
@@ -178,7 +185,7 @@ func TestMemoryStore_DeleteByAuthMethod(t *testing.T) {
 
 func TestMemoryStore_DeleteByAuthMethod_Empty(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 
 	count, err := m.DeleteByAuthMethod(context.Background(), "oidc")
 	require.NoError(t, err)
@@ -187,7 +194,7 @@ func TestMemoryStore_DeleteByAuthMethod_Empty(t *testing.T) {
 
 func TestMemoryStore_DeleteByAuthMethod_LocalOnly(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 	ctx := context.Background()
 
 	local1 := newTestSession("local1", "alice")
@@ -215,9 +222,47 @@ func TestMemoryStore_DeleteByAuthMethod_LocalOnly(t *testing.T) {
 	assert.NotNil(t, got)
 }
 
+func TestMemoryStore_List(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(func() { m.Close() })
+	ctx := context.Background()
+
+	// Create 3 sessions, one with expired LastActivity
+	s1 := newTestSession("s1", "alice")
+	s2 := newTestSession("s2", "bob")
+	s3 := newTestSession("s3", "carol")
+	s3.LastActivity = time.Now().Add(-2 * time.Hour) // expired
+
+	require.NoError(t, m.Create(ctx, s1))
+	require.NoError(t, m.Create(ctx, s2))
+	require.NoError(t, m.Create(ctx, s3))
+
+	sessions, err := m.List(ctx)
+	require.NoError(t, err)
+	assert.Len(t, sessions, 2, "should return only non-expired sessions")
+
+	usernames := map[string]bool{}
+	for _, s := range sessions {
+		usernames[s.Username] = true
+	}
+	assert.True(t, usernames["alice"])
+	assert.True(t, usernames["bob"])
+	assert.False(t, usernames["carol"], "expired session should not be listed")
+}
+
+func TestMemoryStore_List_Empty(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(func() { m.Close() })
+
+	sessions, err := m.List(context.Background())
+	require.NoError(t, err)
+	assert.NotNil(t, sessions, "should return empty slice, not nil")
+	assert.Len(t, sessions, 0)
+}
+
 func TestMemoryStore_ConcurrentAccess(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
-	t.Cleanup(m.Close)
+	t.Cleanup(func() { m.Close() })
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
