@@ -1548,3 +1548,160 @@ func TestOIDCStartDisabled(t *testing.T) {
 	assert.Equal(t, http.StatusFound, w.Code)
 	assert.Equal(t, "/login", w.Header().Get("Location"))
 }
+
+// --- Tag management handler tests ---
+
+// createTaggedItem creates an item with given tags via the API and returns the item.
+func createTaggedItem(t *testing.T, router http.Handler, name string, containerID int64, tags []string) model.ItemResponse {
+	t.Helper()
+	tagsJSON, _ := json.Marshal(tags)
+	body := fmt.Sprintf(`{"name":%q,"container_id":%d,"tags":%s}`, name, containerID, tagsJSON)
+	req := httptest.NewRequest(http.MethodPost, "/api/items", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code, "createTaggedItem: %s", w.Body.String())
+	var item model.ItemResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&item))
+	return item
+}
+
+// getTagIDByName fetches tags from the API and returns the ID of the tag with the given name.
+func getTagIDByName(t *testing.T, router http.Handler, name string) int64 {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/tags?q="+name, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	var tags []model.TagResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&tags))
+	for _, tag := range tags {
+		if tag.Name == name {
+			return tag.ID
+		}
+	}
+	t.Fatalf("tag %q not found", name)
+	return 0
+}
+
+func TestHandleRenameTag(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTaggedItem(t, router, "M6 Bolt", 1, []string{"bolt"})
+
+	tagID := getTagIDByName(t, router, "bolt")
+
+	body := `{"name":"screw"}`
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/tags/%d", tagID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, true, resp["ok"])
+}
+
+func TestHandleRenameTagConflict(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTaggedItem(t, router, "M6 Bolt", 1, []string{"bolt"})
+	createTaggedItem(t, router, "M6 Screw", 1, []string{"screw"})
+
+	tagID := getTagIDByName(t, router, "bolt")
+
+	body := `{"name":"screw"}`
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/tags/%d", tagID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, true, resp["merge_needed"])
+	assert.NotNil(t, resp["target"])
+	assert.NotNil(t, resp["source"])
+}
+
+func TestHandleRenameTagMerge(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTaggedItem(t, router, "M6 Bolt", 1, []string{"bolt"})
+	createTaggedItem(t, router, "M6 Screw", 1, []string{"screw"})
+
+	tagID := getTagIDByName(t, router, "bolt")
+
+	body := `{"name":"screw","force_merge":true}`
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/tags/%d", tagID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, true, resp["ok"])
+}
+
+func TestHandleRenameTagValidation(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTaggedItem(t, router, "M6 Bolt", 1, []string{"bolt"})
+	tagID := getTagIDByName(t, router, "bolt")
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"empty name", `{"name":""}`},
+		{"name too long", fmt.Sprintf(`{"name":"%s"}`, strings.Repeat("x", 51))},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/tags/%d", tagID), strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func TestHandleDeleteTag(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	// Create an item with a tag, then delete the item to leave an orphan tag
+	item := createTaggedItem(t, router, "Temp Bolt", 1, []string{"unused-tag"})
+	tagID := getTagIDByName(t, router, "unused-tag")
+
+	// Delete the item so the tag becomes unused
+	delReq := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/items/%d", item.ID), nil)
+	delW := httptest.NewRecorder()
+	router.ServeHTTP(delW, delReq)
+	require.Equal(t, http.StatusNoContent, delW.Code)
+
+	// Now delete the unused tag
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/tags/%d", tagID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestHandleDeleteTagInUse(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTaggedItem(t, router, "M6 Bolt", 1, []string{"bolt"})
+	tagID := getTagIDByName(t, router, "bolt")
+
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/tags/%d", tagID), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Contains(t, resp["error"], "in use")
+}
