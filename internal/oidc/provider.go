@@ -3,6 +3,7 @@ package oidc
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
@@ -21,9 +22,10 @@ type IDTokenClaims struct {
 
 // Provider wraps go-oidc provider and oauth2 config for a single OIDC flow.
 type Provider struct {
-	oauth2Cfg *oauth2.Config
-	verifier  *gooidc.IDTokenVerifier
-	issuer    string
+	oauth2Cfg    *oauth2.Config
+	verifier     *gooidc.IDTokenVerifier
+	oidcProvider *gooidc.Provider
+	issuer       string
 }
 
 // NewProviderFromConfig creates a Provider by performing OIDC discovery on the issuer URL.
@@ -51,9 +53,10 @@ func NewProviderFromConfig(ctx context.Context, issuerURL, clientID, clientSecre
 	})
 
 	return &Provider{
-		oauth2Cfg: oauth2Cfg,
-		verifier:  verifier,
-		issuer:    issuerURL,
+		oauth2Cfg:    oauth2Cfg,
+		verifier:     verifier,
+		oidcProvider: oidcProvider,
+		issuer:       issuerURL,
 	}, nil
 }
 
@@ -96,8 +99,7 @@ func (p *Provider) ExchangeAndVerify(ctx context.Context, code, pkceVerifier, ex
 		return nil, fmt.Errorf("nonce mismatch: expected %q, got %q", expectedNonce, idToken.Nonce)
 	}
 
-	// Extract standard claims. Providers vary in which fields they populate,
-	// so we read multiple name-like claims and pick the best one.
+	// Extract claims from ID token first.
 	var claims struct {
 		Email             string `json:"email"`
 		Name              string `json:"name"`
@@ -110,13 +112,50 @@ func (p *Provider) ExchangeAndVerify(ctx context.Context, code, pkceVerifier, ex
 		return nil, fmt.Errorf("failed to extract claims: %w", err)
 	}
 
-	// Pick the best display name: name > display_name > preferred_username
+	// Authelia (and some other providers) only put profile/email claims in the
+	// userinfo endpoint, not in the ID token. Fetch userinfo as fallback.
+	if claims.Email == "" || (claims.Name == "" && claims.PreferredUsername == "") {
+		userInfo, err := p.oidcProvider.UserInfo(ctx, oauth2.StaticTokenSource(token))
+		if err != nil {
+			slog.Warn("OIDC userinfo fetch failed, using ID token claims only", "err", err)
+		} else {
+			var uiClaims struct {
+				Email             string `json:"email"`
+				Name              string `json:"name"`
+				PreferredUsername string `json:"preferred_username"`
+				DisplayName       string `json:"display_name"`
+				Picture           string `json:"picture"`
+			}
+			if err := userInfo.Claims(&uiClaims); err == nil {
+				if claims.Email == "" {
+					claims.Email = uiClaims.Email
+				}
+				if claims.Name == "" {
+					claims.Name = uiClaims.Name
+				}
+				if claims.PreferredUsername == "" {
+					claims.PreferredUsername = uiClaims.PreferredUsername
+				}
+				if claims.DisplayName == "" {
+					claims.DisplayName = uiClaims.DisplayName
+				}
+				if claims.Picture == "" {
+					claims.Picture = uiClaims.Picture
+				}
+			}
+		}
+	}
+
+	// Pick the best display name: name > display_name > preferred_username > email
 	displayName := claims.Name
 	if displayName == "" {
 		displayName = claims.DisplayName
 	}
 	if displayName == "" {
 		displayName = claims.PreferredUsername
+	}
+	if displayName == "" {
+		displayName = claims.Email
 	}
 
 	return &IDTokenClaims{
