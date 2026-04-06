@@ -109,7 +109,7 @@ Plans:
 - [x] **Phase 11: Session Store Interface** - Extract session management into pluggable interface with memory implementation and configurable TTL (completed 2026-04-05)
 - [x] **Phase 12: Search Enhancement** - Multi-tag AND filtering, description search, batch query optimization (completed 2026-04-05)
 - [x] **Phase 13: Admin Panel Shell** - Dedicated /admin page with shelf settings migrated from grid modal (completed 2026-04-06)
-- [ ] **Phase 14: OIDC Authentication** - Login via OIDC provider with PKCE, local auth fallback, admin config UI
+- [x] **Phase 14: OIDC Authentication** - Login via OIDC provider with PKCE, local auth fallback, admin config UI (completed 2026-04-06)
 - [ ] **Phase 15: Data Export/Import** - JSON export download and validated import upload in admin panel
 - [ ] **Phase 16: Redis Sessions** - Optional Redis-backed sessions with active session listing and revocation
 - [ ] **Phase 17: Documentation** - README.md with developer setup, user guide, configuration reference
@@ -169,12 +169,12 @@ Plans:
   3. Local username/password login remains functional when OIDC is enabled -- both login methods coexist on the login page
   4. Admin can configure the OIDC provider (issuer URL, client ID, client secret, display name) from the auth settings section of the admin panel
   5. When no OIDC provider is configured, the login page shows only local auth with no broken SSO button
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 Plans:
-- [ ] 14-01-PLAN.md -- Session extensions + models + DB migrations + store OIDC CRUD
-- [ ] 14-02-PLAN.md -- OIDC package (config, AES-GCM cookie encryption, provider wrapper)
-- [ ] 14-03-PLAN.md -- OIDC flow handlers + routes + login template + header display
-- [ ] 14-04-PLAN.md -- Admin OIDC config UI + API + env var seeding + verification
+- [x] 14-01-PLAN.md -- Session extensions + models + DB migrations + store OIDC CRUD
+- [x] 14-02-PLAN.md -- OIDC package (config, AES-GCM cookie encryption, provider wrapper)
+- [x] 14-03-PLAN.md -- OIDC flow handlers + routes + login template + header display
+- [x] 14-04-PLAN.md -- Admin OIDC config UI + API + env var seeding + verification
 **UI hint**: yes
 
 ### Phase 15: Data Export/Import
@@ -232,7 +232,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 11. Session Store Interface | v1.1 | 2/2 | Complete    | 2026-04-05 |
 | 12. Search Enhancement | v1.1 | 2/2 | Complete    | 2026-04-05 |
 | 13. Admin Panel Shell | v1.1 | 2/2 | Complete    | 2026-04-06 |
-| 14. OIDC Authentication | v1.1 | 0/4 | Planning complete | - |
+| 14. OIDC Authentication | v1.1 | 4/4 | Complete    | 2026-04-06 |
 | 15. Data Export/Import | v1.1 | 0/0 | Not started | - |
 | 16. Redis Sessions | v1.1 | 0/0 | Not started | - |
 | 17. Documentation | v1.1 | 0/0 | Not started | - |
