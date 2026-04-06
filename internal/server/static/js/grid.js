@@ -78,76 +78,67 @@
 
   // Event delegation on grid container for cell clicks
   gridContainer.addEventListener('click', function (e) {
-    const cell = e.target.closest('.grid-cell');
+    var cell = e.target.closest('.grid-cell');
     if (!cell) return;
-    // Do not re-expand an already active cell
-    if (cell.classList.contains('cell-active')) return;
-    // Stop propagation so the click-outside handler doesn't immediately close the panel
     e.stopPropagation();
+
+    // D-07: Toggle if same cell clicked
+    if (expandedCell === cell) {
+      collapseCell();
+      return;
+    }
+
+    // D-06: If panel already open, swap content directly (no animation)
+    if (expandedPanel && expandedCell) {
+      swapPanelContent(cell);
+      return;
+    }
+
+    // First open
     expandCell(cell);
   });
 
   async function expandCell(cell) {
-    // Collapse any previously expanded panel first
+    // Collapse any existing panel first (safety)
     if (expandedCell) {
       collapseCell();
     }
 
-    // Highlight the source cell
     cell.classList.add('cell-active');
+    cell.setAttribute('aria-expanded', 'true');
     expandedCell = cell;
 
-    // Create a floating panel outside the grid
-    const panel = document.createElement('div');
+    var sidebar = document.querySelector('.search-sidebar');
+
+    var panel = document.createElement('div');
     panel.className = 'expanded-panel';
-    document.body.appendChild(panel);
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', 'Container details');
+    sidebar.appendChild(panel);
     expandedPanel = panel;
 
-    // Position panel near the clicked cell
-    const rect = cell.getBoundingClientRect();
-    const panelWidth = 300;
-    let left = rect.right + 12;
-    // If it overflows the right edge, place it to the left of the cell
-    if (left + panelWidth > window.innerWidth) {
-      left = rect.left - panelWidth - 12;
-    }
-    // If still off-screen, center horizontally
-    if (left < 8) {
-      left = Math.max(8, (window.innerWidth - panelWidth) / 2);
-    }
-    // Clamp right edge
-    if (left + panelWidth > window.innerWidth - 8) {
-      left = window.innerWidth - panelWidth - 8;
-    }
-    let top = rect.top;
-    // Keep within viewport vertically
-    if (top + 300 > window.innerHeight) {
-      top = Math.max(8, window.innerHeight - 400);
-    }
-    panel.style.top = top + 'px';
-    panel.style.left = left + 'px';
-
-    // Panel header bar
-    const headerBar = document.createElement('div');
+    // Build header
+    var headerBar = document.createElement('div');
     headerBar.className = 'panel-header';
 
-    const coordWrap = document.createElement('div');
-    const coordLabel = document.createElement('span');
+    var coordWrap = document.createElement('div');
+    var coordLabel = document.createElement('span');
     coordLabel.className = 'panel-coord';
     coordLabel.textContent = cell.dataset.coord;
     coordWrap.appendChild(coordLabel);
 
-    const countLabel = document.createElement('span');
+    var countLabel = document.createElement('span');
     countLabel.className = 'panel-count';
-    const cnt = parseInt(cell.dataset.count, 10) || 0;
+    var cnt = parseInt(cell.dataset.count, 10) || 0;
     countLabel.textContent = cnt === 0 ? 'Empty' : formatCount(cnt);
     coordWrap.appendChild(countLabel);
     headerBar.appendChild(coordWrap);
 
-    const closeBtn = document.createElement('button');
+    var closeBtn = document.createElement('button');
     closeBtn.className = 'expanded-close';
     closeBtn.type = 'button';
     closeBtn.textContent = '\u00D7';
+    closeBtn.setAttribute('aria-label', 'Close panel');
     closeBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       collapseCell();
@@ -155,14 +146,18 @@
     headerBar.appendChild(closeBtn);
     panel.appendChild(headerBar);
 
-    // Content container
-    const content = document.createElement('div');
+    var content = document.createElement('div');
     content.className = 'panel-body';
     panel.appendChild(content);
 
-    // Fetch items for this container
-    const containerId = parseInt(cell.dataset.containerId, 10);
-    const result = await apiCall('/api/containers/' + containerId + '/items');
+    // D-08: Trigger slide-down animation via requestAnimationFrame
+    requestAnimationFrame(function () {
+      panel.classList.add('panel-open');
+    });
+
+    // Fetch items
+    var containerId = parseInt(cell.dataset.containerId, 10);
+    var result = await apiCall('/api/containers/' + containerId + '/items');
 
     if (result.ok && result.data && result.data.items && result.data.items.length > 0) {
       renderItemList(cell, content, result.data.items, containerId);
@@ -172,22 +167,66 @@
   }
 
   function collapseCell() {
-    if (expandedPanel) {
-      expandedPanel.remove();
-      expandedPanel = null;
+    if (!expandedPanel) return;
+
+    var panel = expandedPanel;
+    var cell = expandedCell;
+
+    panel.classList.remove('panel-open');
+
+    function onTransitionEnd(e) {
+      if (e.propertyName !== 'max-height') return;
+      panel.removeEventListener('transitionend', onTransitionEnd);
+      panel.remove();
     }
-    if (expandedCell) {
-      expandedCell.classList.remove('cell-active');
+    panel.addEventListener('transitionend', onTransitionEnd);
+
+    // Fallback: if reduced-motion or transition doesn't fire, remove after 250ms
+    setTimeout(function () {
+      if (panel.parentNode) {
+        panel.removeEventListener('transitionend', onTransitionEnd);
+        panel.remove();
+      }
+    }, 250);
+
+    expandedPanel = null;
+    if (cell) {
+      cell.setAttribute('aria-expanded', 'false');
+      cell.classList.remove('cell-active');
       expandedCell = null;
     }
   }
 
-  // Click-outside handler
-  document.addEventListener('click', function (e) {
-    if (expandedPanel && !expandedPanel.contains(e.target) && !e.target.closest('.search-bar')) {
-      collapseCell();
+  async function swapPanelContent(cell) {
+    // Update cell highlighting
+    if (expandedCell) {
+      expandedCell.setAttribute('aria-expanded', 'false');
+      expandedCell.classList.remove('cell-active');
     }
-  });
+    cell.classList.add('cell-active');
+    cell.setAttribute('aria-expanded', 'true');
+    expandedCell = cell;
+
+    // Update header
+    var coordLabel = expandedPanel.querySelector('.panel-coord');
+    var countLabel = expandedPanel.querySelector('.panel-count');
+    coordLabel.textContent = cell.dataset.coord;
+    var cnt = parseInt(cell.dataset.count, 10) || 0;
+    countLabel.textContent = cnt === 0 ? 'Empty' : formatCount(cnt);
+
+    // Clear body and refetch content
+    var content = expandedPanel.querySelector('.panel-body');
+    while (content.firstChild) { content.removeChild(content.firstChild); }
+
+    var containerId = parseInt(cell.dataset.containerId, 10);
+    var result = await apiCall('/api/containers/' + containerId + '/items');
+
+    if (result.ok && result.data && result.data.items && result.data.items.length > 0) {
+      renderItemList(cell, content, result.data.items, containerId);
+    } else {
+      renderAddForm(cell, content, containerId);
+    }
+  }
 
   // Escape key handler (search-aware: skips when search is active)
   document.addEventListener('keydown', function (e) {
