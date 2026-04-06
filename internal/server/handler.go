@@ -797,6 +797,101 @@ func renderLogin(w http.ResponseWriter, data loginData) {
 	}
 }
 
+// --- OIDC Config API ---
+
+func (srv *Server) handleGetOIDCConfig() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg, err := srv.store.GetOIDCConfigMasked(r.Context())
+		if err != nil {
+			slog.Error("get oidc config", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, cfg)
+	}
+}
+
+type updateOIDCConfigRequest struct {
+	Enabled      bool   `json:"enabled"`
+	IssuerURL    string `json:"issuer_url"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	DisplayName  string `json:"display_name"`
+}
+
+func (srv *Server) handleUpdateOIDCConfig() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req updateOIDCConfigRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		req.IssuerURL = strings.TrimSpace(req.IssuerURL)
+		req.ClientID = strings.TrimSpace(req.ClientID)
+		req.DisplayName = strings.TrimSpace(req.DisplayName)
+
+		ctx := r.Context()
+
+		// Check if OIDC was previously enabled (for session revocation D-22)
+		prevCfg, _ := srv.store.GetOIDCConfig(ctx)
+		wasEnabled := prevCfg != nil && prevCfg.Enabled
+
+		if req.Enabled {
+			// Validate required fields when enabling
+			if req.IssuerURL == "" || req.ClientID == "" {
+				writeError(w, http.StatusBadRequest, "Issuer URL, Client ID, and Client Secret are required.")
+				return
+			}
+			// Check if secret is required (no existing secret and none provided)
+			if req.ClientSecret == "" {
+				existingCfg, _ := srv.store.GetOIDCConfig(ctx)
+				if existingCfg == nil || existingCfg.ClientSecret == "" {
+					writeError(w, http.StatusBadRequest, "Issuer URL, Client ID, and Client Secret are required.")
+					return
+				}
+			}
+			// Validate provider by hitting discovery endpoint (D-21)
+			if err := oidcpkg.ValidateDiscovery(ctx, req.IssuerURL); err != nil {
+				slog.Warn("oidc config: discovery validation failed", "issuer", req.IssuerURL, "err", err)
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("Could not reach OIDC provider at %s. Check the Issuer URL.", req.IssuerURL))
+				return
+			}
+		}
+
+		// Save config
+		cfg := &model.OIDCConfig{
+			Enabled:      req.Enabled,
+			IssuerURL:    req.IssuerURL,
+			ClientID:     req.ClientID,
+			ClientSecret: req.ClientSecret, // Store handles empty = preserve existing
+			DisplayName:  req.DisplayName,
+		}
+		if err := srv.store.SaveOIDCConfig(ctx, cfg); err != nil {
+			slog.Error("save oidc config", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		// If OIDC was disabled (was enabled, now not), revoke OIDC sessions (D-22)
+		if wasEnabled && !req.Enabled {
+			count, err := srv.sessions.DeleteByAuthMethod(ctx, "oidc")
+			if err != nil {
+				slog.Error("revoke oidc sessions", "err", err)
+			} else {
+				slog.Info("revoked oidc sessions on disable", "count", count)
+			}
+		}
+
+		// Return updated masked config
+		updated, err := srv.store.GetOIDCConfigMasked(ctx)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		writeJSON(w, http.StatusOK, updated)
+	}
+}
+
 func (srv *Server) handleGetAuthSettings() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		settings, err := srv.store.GetAuthSettings(r.Context())

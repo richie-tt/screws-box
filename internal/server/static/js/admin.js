@@ -338,6 +338,112 @@
     });
   }
 
+  // --- OIDC Config ---
+
+  var oidcForm = document.getElementById('oidc-form');
+  var oidcEnabled = document.getElementById('oidc-enabled');
+  var oidcFields = oidcForm ? oidcForm.querySelector('.oidc-fields') : null;
+  var oidcSaveBtn = document.getElementById('oidc-save-btn');
+
+  // Toggle OIDC fields visibility
+  if (oidcEnabled && oidcFields) {
+    oidcEnabled.addEventListener('change', function() {
+      if (this.checked) {
+        oidcFields.hidden = false;
+      } else {
+        oidcFields.hidden = true;
+      }
+      updateOIDCSaveLabel();
+    });
+  }
+
+  // Track if OIDC was originally enabled (for disable confirmation)
+  var oidcWasEnabled = oidcEnabled ? oidcEnabled.checked : false;
+
+  function updateOIDCSaveLabel() {
+    if (!oidcSaveBtn || !oidcEnabled) return;
+    if (oidcWasEnabled && !oidcEnabled.checked) {
+      oidcSaveBtn.textContent = 'Disable OIDC and revoke sessions';
+    } else {
+      oidcSaveBtn.textContent = 'Save OIDC Settings';
+    }
+  }
+
+  // Secret toggle
+  var secretToggle = document.querySelector('.secret-toggle');
+  if (secretToggle) {
+    secretToggle.addEventListener('click', function() {
+      var input = document.getElementById('oidc-client-secret');
+      if (input.type === 'password') {
+        input.type = 'text';
+        this.setAttribute('aria-label', 'Hide secret');
+      } else {
+        input.type = 'password';
+        this.setAttribute('aria-label', 'Show secret');
+      }
+    });
+  }
+
+  // OIDC form submit
+  if (oidcForm) {
+    oidcForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var feedback = oidcForm.querySelector('.admin-form-feedback');
+      var btn = oidcSaveBtn;
+      setBusy(btn, true);
+      clearFeedback(feedback);
+
+      var payload = {
+        enabled: oidcEnabled.checked,
+        display_name: document.getElementById('oidc-display-name').value,
+        issuer_url: document.getElementById('oidc-issuer').value,
+        client_id: document.getElementById('oidc-client-id').value,
+        client_secret: document.getElementById('oidc-client-secret').value
+      };
+
+      fetch('/api/oidc/config', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCSRFToken()
+        },
+        body: JSON.stringify(payload)
+      })
+      .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
+      .then(function(result) {
+        setBusy(btn, false);
+        if (result.ok) {
+          if (!payload.enabled && oidcWasEnabled) {
+            showFeedback(feedback, 'OIDC disabled. Active SSO sessions have been revoked.', 'success');
+          } else {
+            showFeedback(feedback, 'OIDC settings saved.', 'success');
+          }
+          oidcWasEnabled = payload.enabled;
+          // Clear secret field after successful save
+          document.getElementById('oidc-client-secret').value = '';
+          if (payload.client_secret) {
+            document.getElementById('oidc-client-secret').placeholder = '********';
+            var helper = oidcForm.querySelector('.secret-field + .text-muted');
+            if (!helper) {
+              helper = document.createElement('small');
+              helper.className = 'text-muted';
+              var secretField = oidcForm.querySelector('.secret-field');
+              secretField.parentNode.insertBefore(helper, secretField.nextSibling);
+            }
+            helper.textContent = 'Secret is configured. Enter a new value to replace it.';
+          }
+          updateOIDCSaveLabel();
+        } else {
+          showFeedback(feedback, result.data.error || 'Failed to save OIDC settings.', 'error');
+        }
+      })
+      .catch(function() {
+        setBusy(btn, false);
+        showFeedback(feedback, 'Network error. Please try again.', 'error');
+      });
+    });
+  }
+
   // --- Sidebar Navigation ---
 
   var navItems = document.querySelectorAll('.admin-nav-item:not(.disabled)');

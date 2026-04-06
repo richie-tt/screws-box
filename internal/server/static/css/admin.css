@@ -196,6 +196,36 @@
   margin-top: var(--space-md);
 }
 
+.oidc-fields {
+  margin-top: var(--space-md);
+}
+
+/* OIDC / SSO subsection */
+.admin-subsection-title {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: var(--space-md);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.secret-field {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+}
+
+.secret-field input {
+  flex: 1;
+}
+
+.secret-toggle {
+  flex-shrink: 0;
+  padding: 6px;
+}
+
 /* --- Back Link --- */
 
 .back-link {

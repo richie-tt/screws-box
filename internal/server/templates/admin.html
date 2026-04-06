@@ -94,6 +94,51 @@
                     <span class="admin-form-feedback" role="status" aria-live="polite"></span>
                 </div>
             </form>
+            <hr class="admin-divider">
+            <h3 class="admin-subsection-title">OIDC / SSO</h3>
+            <form id="oidc-form" class="admin-form">
+                <div class="form-group">
+                    <label class="toggle-label" for="oidc-enabled">
+                        <input type="checkbox" id="oidc-enabled" name="oidc_enabled" {{if .OIDCEnabled}}checked{{end}}>
+                        <span class="toggle-switch"></span>
+                        Enable OIDC
+                    </label>
+                </div>
+                <div class="oidc-fields" {{if not .OIDCEnabled}}hidden{{end}}>
+                    <div class="form-group">
+                        <label for="oidc-display-name">Display Name</label>
+                        <input type="text" id="oidc-display-name" name="display_name" value="{{.OIDCDisplayName}}" placeholder="e.g. Authelia">
+                    </div>
+                    <div class="form-group">
+                        <label for="oidc-issuer">Issuer URL</label>
+                        <input type="text" id="oidc-issuer" name="issuer_url" value="{{.OIDCIssuer}}" placeholder="https://auth.example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="oidc-client-id">Client ID</label>
+                        <input type="text" id="oidc-client-id" name="client_id" value="{{.OIDCClientID}}">
+                    </div>
+                    <div class="form-group">
+                        <label for="oidc-client-secret">Client Secret</label>
+                        <div class="secret-field">
+                            <input type="password" id="oidc-client-secret" name="client_secret"
+                                placeholder="{{if eq .OIDCSecretStatus "configured"}}********{{else}}Enter client secret{{end}}">
+                            <button type="button" class="ghost secret-toggle" aria-label="Show secret">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z"/>
+                                    <circle cx="8" cy="8" r="2"/>
+                                </svg>
+                            </button>
+                        </div>
+                        {{if eq .OIDCSecretStatus "configured"}}
+                        <small class="text-muted">Secret is configured. Enter a new value to replace it.</small>
+                        {{end}}
+                    </div>
+                </div>
+                <div class="admin-form-actions">
+                    <button type="submit" class="btn" id="oidc-save-btn">Save OIDC Settings</button>
+                    <span class="admin-form-feedback" role="status" aria-live="polite"></span>
+                </div>
+            </form>
         </section>
     </div>
 </div>
