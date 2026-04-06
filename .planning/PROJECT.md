@@ -87,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-06 after Phase 15 (Data Export/Import) complete — JSON export/import with nested hierarchy, transactional clear-and-replace, two-step validate/confirm flow, admin Data section UI*
+*Last updated: 2026-04-06 after Phase 17 (Documentation) complete — v1.1 milestone shipped. README.md, Dockerfile, docker-compose.yml, .env.example added. All 17 phases complete.*
