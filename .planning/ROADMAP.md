@@ -186,7 +186,11 @@ Plans:
   2. Uploading a previously exported JSON file restores the data with validation feedback (success count, skipped items, errors)
   3. Importing invalid JSON (wrong format, missing fields) shows a clear error message without corrupting existing data
   4. A round-trip test works: export -> clear data -> import -> all items and tags are back in correct containers
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 15-01-PLAN.md — Export model structs, store export/import methods, export handler, tests
+- [ ] 15-02-PLAN.md — Import handlers (validate/confirm), admin UI (template, CSS, JS)
+**UI hint**: yes
 
 ### Phase 16: Redis Sessions
 **Goal**: Sessions can optionally persist in Redis for restart survival, and the admin can see and revoke active sessions
@@ -233,7 +237,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 12. Search Enhancement | v1.1 | 2/2 | Complete    | 2026-04-05 |
 | 13. Admin Panel Shell | v1.1 | 2/2 | Complete    | 2026-04-06 |
 | 14. OIDC Authentication | v1.1 | 4/4 | Complete    | 2026-04-06 |
-| 15. Data Export/Import | v1.1 | 0/0 | Not started | - |
+| 15. Data Export/Import | v1.1 | 0/2 | Planned     | - |
 | 16. Redis Sessions | v1.1 | 0/0 | Not started | - |
 | 17. Documentation | v1.1 | 0/0 | Not started | - |
 
