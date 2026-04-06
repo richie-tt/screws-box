@@ -913,4 +913,503 @@
     sessionsRefresh.addEventListener('click', refreshSessions);
   }
 
+  // --- Tag Management Section ---
+
+  var tagsData = [];
+  var tagsSortCol = 'name';
+  var tagsSortAsc = true;
+  var tagsFilterText = '';
+  var tagsEditingId = null;
+  var tagsFilterTimer = null;
+
+  var tagsTbody = document.getElementById('tags-tbody');
+  var tagsEmpty = document.getElementById('tags-empty');
+  var tagsTableWrap = document.getElementById('tags-table-wrap');
+  var tagsFilterInput = document.getElementById('tag-filter-input');
+  var tagsFeedback = document.getElementById('tags-feedback');
+
+  function createSVGIcon(paths) {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '14');
+    svg.setAttribute('height', '14');
+    svg.setAttribute('viewBox', '0 0 14 14');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.5');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    if (!Array.isArray(paths)) {
+      paths = [paths];
+    }
+    for (var i = 0; i < paths.length; i++) {
+      var p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p.setAttribute('d', paths[i]);
+      svg.appendChild(p);
+    }
+    return svg;
+  }
+
+  function fetchTags() {
+    var url = '/api/tags';
+    if (tagsFilterText) {
+      url += '?q=' + encodeURIComponent(tagsFilterText);
+    }
+    fetch(url, { credentials: 'same-origin' })
+      .then(function(resp) { return resp.json(); })
+      .then(function(data) {
+        tagsData = data || [];
+        if (tagsData.length === 0 && !tagsFilterText) {
+          tagsEmpty.hidden = false;
+          tagsTableWrap.hidden = true;
+        } else {
+          tagsEmpty.hidden = true;
+          tagsTableWrap.hidden = false;
+        }
+        sortAndRender();
+      })
+      .catch(function() {
+        showFeedback(tagsFeedback, 'Failed to load tags. Please try again.', 'error');
+      });
+  }
+
+  function sortAndRender() {
+    var sorted = tagsData.slice();
+    sorted.sort(function(a, b) {
+      var result;
+      if (tagsSortCol === 'name') {
+        result = a.name.localeCompare(b.name);
+      } else {
+        result = a.item_count - b.item_count;
+        if (result === 0) {
+          result = a.name.localeCompare(b.name);
+        }
+      }
+      return tagsSortAsc ? result : -result;
+    });
+
+    while (tagsTbody.firstChild) {
+      tagsTbody.removeChild(tagsTbody.firstChild);
+    }
+
+    if (sorted.length === 0 && tagsFilterText) {
+      var emptyRow = document.createElement('tr');
+      var emptyCell = document.createElement('td');
+      emptyCell.setAttribute('colspan', '3');
+      emptyCell.style.textAlign = 'center';
+      emptyCell.style.color = 'var(--text-muted)';
+      emptyCell.style.padding = 'var(--space-lg)';
+      emptyCell.textContent = 'No tags matching "' + tagsFilterText + '"';
+      emptyRow.appendChild(emptyCell);
+      tagsTbody.appendChild(emptyRow);
+    } else {
+      for (var i = 0; i < sorted.length; i++) {
+        tagsTbody.appendChild(renderTagRow(sorted[i]));
+      }
+    }
+
+    // Update sort indicators
+    var headers = document.querySelectorAll('.tags-table th.sortable');
+    for (var h = 0; h < headers.length; h++) {
+      var th = headers[h];
+      var col = th.getAttribute('data-sort');
+      var indicator = th.querySelector('.sort-indicator');
+      if (col === tagsSortCol) {
+        th.setAttribute('aria-sort', tagsSortAsc ? 'ascending' : 'descending');
+        if (indicator) indicator.textContent = tagsSortAsc ? '\u25B2' : '\u25BC';
+      } else {
+        th.removeAttribute('aria-sort');
+        if (indicator) indicator.textContent = '';
+      }
+    }
+  }
+
+  function renderTagRow(tag) {
+    var tr = document.createElement('tr');
+    tr.setAttribute('data-tag-id', tag.id);
+
+    // Name cell
+    var tdName = document.createElement('td');
+    tdName.textContent = tag.name;
+    tr.appendChild(tdName);
+
+    // Count cell
+    var tdCount = document.createElement('td');
+    tdCount.textContent = tag.item_count;
+    if (tag.item_count === 0) {
+      tdCount.style.color = 'var(--text-muted)';
+    }
+    tr.appendChild(tdCount);
+
+    // Actions cell
+    var tdActions = document.createElement('td');
+    tdActions.className = 'tags-col-actions';
+
+    var renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'ghost';
+    renameBtn.setAttribute('aria-label', 'Rename tag ' + tag.name);
+    renameBtn.appendChild(createSVGIcon('M10 1.5l2.5 2.5L4.5 12H2v-2.5L10 1.5z'));
+    renameBtn.addEventListener('click', function() { startEdit(tag); });
+    tdActions.appendChild(renameBtn);
+
+    if (tag.item_count === 0) {
+      var deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'ghost danger-ghost';
+      deleteBtn.setAttribute('aria-label', 'Delete tag ' + tag.name);
+      deleteBtn.appendChild(createSVGIcon([
+        'M2 3.5h10',
+        'M5 3.5V2a1 1 0 011-1h2a1 1 0 011 1v1.5',
+        'M11 3.5l-.5 8a1 1 0 01-1 1h-5a1 1 0 01-1-1L3 3.5'
+      ]));
+      deleteBtn.addEventListener('click', function() { startDelete(tag); });
+      tdActions.appendChild(deleteBtn);
+    }
+
+    tr.appendChild(tdActions);
+
+    // If another tag is being edited, disable actions on this row
+    if (tagsEditingId !== null && tagsEditingId !== tag.id) {
+      tdActions.classList.add('tags-actions-disabled');
+    }
+
+    return tr;
+  }
+
+  // Sort header click handlers
+  var sortHeaders = document.querySelectorAll('.tags-table th.sortable');
+  for (var si = 0; si < sortHeaders.length; si++) {
+    (function(th) {
+      th.addEventListener('click', function() {
+        var col = th.getAttribute('data-sort');
+        if (col === tagsSortCol) {
+          tagsSortAsc = !tagsSortAsc;
+        } else {
+          tagsSortCol = col;
+          tagsSortAsc = true;
+        }
+        cancelEdit();
+        sortAndRender();
+      });
+    })(sortHeaders[si]);
+  }
+
+  // Filter input handler with debounce
+  if (tagsFilterInput) {
+    tagsFilterInput.addEventListener('input', function() {
+      if (tagsFilterTimer) clearTimeout(tagsFilterTimer);
+      tagsFilterTimer = setTimeout(function() {
+        tagsFilterText = tagsFilterInput.value.trim().toLowerCase();
+        if (tagsEditingId !== null) cancelEdit();
+        fetchTags();
+      }, 300);
+    });
+  }
+
+  function startEdit(tag) {
+    if (tagsEditingId !== null) cancelEdit();
+    tagsEditingId = tag.id;
+
+    var row = tagsTbody.querySelector('tr[data-tag-id="' + tag.id + '"]');
+    if (!row) return;
+
+    var cells = row.querySelectorAll('td');
+    var nameCell = cells[0];
+    var actionsCell = cells[2];
+
+    // Replace name cell with input
+    while (nameCell.firstChild) nameCell.removeChild(nameCell.firstChild);
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tag-rename-input';
+    input.value = tag.name;
+    nameCell.appendChild(input);
+    input.focus();
+    input.select();
+
+    // Keyboard handlers
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveRename(tag);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelEdit();
+      }
+    });
+
+    // Replace actions with save/cancel
+    while (actionsCell.firstChild) actionsCell.removeChild(actionsCell.firstChild);
+
+    var saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'ghost';
+    saveBtn.setAttribute('aria-label', 'Save');
+    saveBtn.appendChild(createSVGIcon('M2 7l3.5 3.5L12 3'));
+    saveBtn.addEventListener('click', function() { saveRename(tag); });
+    actionsCell.appendChild(saveBtn);
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'ghost';
+    cancelBtn.setAttribute('aria-label', 'Cancel');
+    cancelBtn.appendChild(createSVGIcon(['M3 3l8 8', 'M11 3l-8 8']));
+    cancelBtn.addEventListener('click', function() { cancelEdit(); });
+    actionsCell.appendChild(cancelBtn);
+
+    // Disable other rows' actions
+    var allRows = tagsTbody.querySelectorAll('tr');
+    for (var r = 0; r < allRows.length; r++) {
+      if (allRows[r].getAttribute('data-tag-id') !== String(tag.id)) {
+        var acts = allRows[r].querySelector('.tags-col-actions');
+        if (acts) acts.classList.add('tags-actions-disabled');
+      }
+    }
+  }
+
+  function cancelEdit() {
+    tagsEditingId = null;
+    sortAndRender();
+  }
+
+  function saveRename(tag) {
+    var row = tagsTbody.querySelector('tr[data-tag-id="' + tag.id + '"]');
+    if (!row) return;
+    var input = row.querySelector('.tag-rename-input');
+    if (!input) return;
+
+    var newName = input.value.trim().toLowerCase();
+
+    // Client-side validation
+    if (!newName) {
+      showFeedback(tagsFeedback, 'Tag name cannot be empty', 'error');
+      return;
+    }
+    if (newName.length > 50) {
+      showFeedback(tagsFeedback, 'Tag name must be 50 characters or fewer', 'error');
+      return;
+    }
+    if (newName === tag.name) {
+      showFeedback(tagsFeedback, 'Tag name unchanged', 'error');
+      cancelEdit();
+      return;
+    }
+
+    var saveBtn = row.querySelector('button[aria-label="Save"]');
+    if (saveBtn) setBusy(saveBtn, true);
+    clearFeedback(tagsFeedback);
+
+    fetch('/api/tags/' + tag.id, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': getCSRFToken()
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({ name: newName })
+    })
+    .then(function(resp) {
+      return resp.json().then(function(data) {
+        return { ok: resp.ok, status: resp.status, data: data };
+      });
+    })
+    .then(function(result) {
+      if (saveBtn) setBusy(saveBtn, false);
+
+      if (result.status === 200 && result.data.ok) {
+        // Success - flash row green
+        showFeedback(tagsFeedback, 'Tag renamed', 'success');
+        tagsEditingId = null;
+        fetchTags();
+        // Flash after re-render
+        setTimeout(function() {
+          var updatedRow = tagsTbody.querySelector('tr[data-tag-id="' + tag.id + '"]');
+          if (updatedRow) {
+            updatedRow.classList.add('tag-row-success');
+            setTimeout(function() {
+              updatedRow.classList.remove('tag-row-success');
+            }, 1500);
+          }
+        }, 100);
+      } else if (result.status === 409 && result.data.merge_needed) {
+        showMergeConfirm(tag, result.data);
+      } else if (result.status === 400) {
+        showFeedback(tagsFeedback, result.data.error || 'Invalid tag name', 'error');
+      } else {
+        showFeedback(tagsFeedback, 'Something went wrong. Please try again.', 'error');
+      }
+    })
+    .catch(function() {
+      if (saveBtn) setBusy(saveBtn, false);
+      showFeedback(tagsFeedback, 'Something went wrong. Please try again.', 'error');
+    });
+  }
+
+  function showMergeConfirm(tag, responseData) {
+    var row = tagsTbody.querySelector('tr[data-tag-id="' + tag.id + '"]');
+    if (!row) return;
+
+    var cells = row.querySelectorAll('td');
+    var nameCell = cells[0];
+    var actionsCell = cells[2];
+
+    // Replace name cell with merge prompt
+    while (nameCell.firstChild) nameCell.removeChild(nameCell.firstChild);
+    var prompt = document.createElement('p');
+    prompt.className = 'tags-merge-prompt';
+    prompt.textContent = "Tag '" + responseData.target.name + "' already exists (" +
+      responseData.target.item_count + " items). Merge '" + responseData.source.name +
+      "' (" + responseData.source.item_count + " items) into '" + responseData.target.name + "'?";
+    nameCell.appendChild(prompt);
+
+    // Replace actions with cancel/merge buttons
+    while (actionsCell.firstChild) actionsCell.removeChild(actionsCell.firstChild);
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'ghost';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', function() { cancelEdit(); });
+    actionsCell.appendChild(cancelBtn);
+
+    var mergeBtn = document.createElement('button');
+    mergeBtn.type = 'button';
+    mergeBtn.className = 'btn danger';
+    mergeBtn.style.fontSize = '13px';
+    mergeBtn.textContent = 'Merge';
+    mergeBtn.addEventListener('click', function() { doMerge(tag.id, responseData.target.name); });
+    actionsCell.appendChild(mergeBtn);
+  }
+
+  function doMerge(tagId, targetName) {
+    var row = tagsTbody.querySelector('tr[data-tag-id="' + tagId + '"]');
+    var mergeBtn = row ? row.querySelector('.btn.danger') : null;
+    if (mergeBtn) setBusy(mergeBtn, true);
+    clearFeedback(tagsFeedback);
+
+    fetch('/api/tags/' + tagId, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': getCSRFToken()
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({ name: targetName, force_merge: true })
+    })
+    .then(function(resp) {
+      return resp.json().then(function(data) {
+        return { ok: resp.ok, status: resp.status, data: data };
+      });
+    })
+    .then(function(result) {
+      if (mergeBtn) setBusy(mergeBtn, false);
+      if (result.ok) {
+        showFeedback(tagsFeedback, 'Tags merged', 'success');
+        tagsEditingId = null;
+        fetchTags();
+      } else {
+        showFeedback(tagsFeedback, result.data.error || 'Merge failed. Please try again.', 'error');
+      }
+    })
+    .catch(function() {
+      if (mergeBtn) setBusy(mergeBtn, false);
+      showFeedback(tagsFeedback, 'Something went wrong. Please try again.', 'error');
+    });
+  }
+
+  function startDelete(tag) {
+    if (tagsEditingId !== null) cancelEdit();
+    tagsEditingId = tag.id;
+
+    var row = tagsTbody.querySelector('tr[data-tag-id="' + tag.id + '"]');
+    if (!row) return;
+
+    var cells = row.querySelectorAll('td');
+    var nameCell = cells[0];
+    var countCell = cells[1];
+    var actionsCell = cells[2];
+
+    // Replace name cell with confirmation text
+    while (nameCell.firstChild) nameCell.removeChild(nameCell.firstChild);
+    var confirmText = document.createElement('span');
+    confirmText.textContent = "Delete tag '" + tag.name + "'?";
+    nameCell.appendChild(confirmText);
+
+    // Clear count cell
+    while (countCell.firstChild) countCell.removeChild(countCell.firstChild);
+
+    // Replace actions with cancel/delete buttons
+    while (actionsCell.firstChild) actionsCell.removeChild(actionsCell.firstChild);
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'ghost';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', function() { cancelEdit(); });
+    actionsCell.appendChild(cancelBtn);
+
+    var deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn danger';
+    deleteBtn.style.fontSize = '13px';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', function() { doDelete(tag); });
+    actionsCell.appendChild(deleteBtn);
+
+    // Disable other rows' actions
+    var allRows = tagsTbody.querySelectorAll('tr');
+    for (var r = 0; r < allRows.length; r++) {
+      if (allRows[r].getAttribute('data-tag-id') !== String(tag.id)) {
+        var acts = allRows[r].querySelector('.tags-col-actions');
+        if (acts) acts.classList.add('tags-actions-disabled');
+      }
+    }
+  }
+
+  function doDelete(tag) {
+    var row = tagsTbody.querySelector('tr[data-tag-id="' + tag.id + '"]');
+    var deleteBtn = row ? row.querySelector('.btn.danger') : null;
+    if (deleteBtn) setBusy(deleteBtn, true);
+    clearFeedback(tagsFeedback);
+
+    fetch('/api/tags/' + tag.id, {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': getCSRFToken() },
+      credentials: 'same-origin'
+    })
+    .then(function(resp) {
+      if (resp.status === 204) {
+        // Success - fade out and remove
+        if (row) {
+          row.classList.add('tag-row-removing');
+          setTimeout(function() {
+            if (row.parentNode) row.parentNode.removeChild(row);
+          }, 300);
+        }
+        showFeedback(tagsFeedback, 'Tag deleted', 'success');
+        tagsEditingId = null;
+        setTimeout(function() { fetchTags(); }, 400);
+      } else if (resp.status === 409) {
+        resp.json().then(function(data) {
+          showFeedback(tagsFeedback, data.error || 'Tag is in use', 'error');
+          if (deleteBtn) setBusy(deleteBtn, false);
+          cancelEdit();
+        });
+      } else {
+        showFeedback(tagsFeedback, 'Something went wrong. Please try again.', 'error');
+        if (deleteBtn) setBusy(deleteBtn, false);
+        cancelEdit();
+      }
+    })
+    .catch(function() {
+      if (deleteBtn) setBusy(deleteBtn, false);
+      showFeedback(tagsFeedback, 'Something went wrong. Please try again.', 'error');
+    });
+  }
+
+  // Initialize tags section
+  if (tagsTbody) {
+    fetchTags();
+  }
+
 })();
