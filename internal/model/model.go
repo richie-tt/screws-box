@@ -132,6 +132,7 @@ type SearchResponse struct {
 type TagResponse struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
+	ItemCount int    `json:"item_count"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }

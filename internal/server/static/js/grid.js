@@ -13,12 +13,6 @@
 
   // --- Section 2: Utility functions ---
 
-  function insertSorted(arr, val) {
-    var i = 0;
-    while (i < arr.length && arr[i] < val) { i++; }
-    arr.splice(i, 0, val);
-  }
-
   function getCSRFToken() {
     var match = document.cookie.match(/(?:^|; )screwsbox_csrf=([^;]*)/);
     return match ? match[1] : '';
@@ -257,8 +251,7 @@
       if (item.tags && item.tags.length > 0) {
         const tagsRow = document.createElement('div');
         tagsRow.className = 'item-tags-row';
-        var sortedTags = item.tags.slice().sort();
-        sortedTags.forEach(function (tag) {
+        item.tags.forEach(function (tag) {
           const chip = document.createElement('span');
           chip.className = 'tag-chip';
           chip.textContent = tag;
@@ -482,7 +475,7 @@
     // Wire autocomplete to tag input (must be after tagInput is appended to form)
     createAutocomplete(tagInput, function (selectedTag) {
       if (pendingTags.indexOf(selectedTag) === -1) {
-        insertSorted(pendingTags, selectedTag);
+        pendingTags.push(selectedTag);
         renderTagChips();
         tagInput.value = '';
         updateSubmitState();
@@ -581,7 +574,7 @@
         e.preventDefault(); // CRITICAL: prevent form submit
         const val = tagInput.value.trim().toLowerCase();
         if (val && pendingTags.indexOf(val) === -1) {
-          insertSorted(pendingTags, val);
+          pendingTags.push(val);
           renderTagChips();
           tagInput.value = '';
           updateSubmitState();
@@ -692,7 +685,7 @@
     editDiv.appendChild(errorEl);
 
     // Local copy of tags for live management
-    let liveTags = (item.tags || []).slice().sort();
+    let liveTags = (item.tags || []).slice();
 
     function renderEditTagChips() {
       chipsContainer.innerHTML = '';
@@ -737,7 +730,7 @@
         body: JSON.stringify({ name: selectedTag })
       });
       if (result.ok) {
-        insertSorted(liveTags, selectedTag);
+        liveTags.push(selectedTag);
         renderEditTagChips();
         tagInput.value = '';
       } else {
@@ -759,7 +752,7 @@
         });
 
         if (result.ok) {
-          insertSorted(liveTags, val);
+          liveTags.push(val);
           renderEditTagChips();
           tagInput.value = '';
         } else {

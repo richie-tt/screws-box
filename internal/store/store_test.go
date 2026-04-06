@@ -1322,3 +1322,175 @@ func TestGetOrCreateEncryptionKey_Length(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, key, 32, "encryption key should be 32 bytes (256 bits)")
 }
+
+// --- Tag management tests ---
+
+// helper: insert tag directly, return tag ID
+func insertTestTag(t *testing.T, s *Store, name string) int64 {
+	t.Helper()
+	res, err := s.conn.Exec("INSERT INTO tag (name) VALUES (?)", name)
+	require.NoError(t, err, "insert tag %q", name)
+	id, _ := res.LastInsertId()
+	return id
+}
+
+// helper: insert item directly, return item ID
+func insertTestItem(t *testing.T, s *Store, containerID int64, name string) int64 {
+	t.Helper()
+	res, err := s.conn.Exec("INSERT INTO item (container_id, name) VALUES (?, ?)", containerID, name)
+	require.NoError(t, err, "insert item %q", name)
+	id, _ := res.LastInsertId()
+	return id
+}
+
+// helper: link item to tag
+func linkItemTag(t *testing.T, s *Store, itemID, tagID int64) {
+	t.Helper()
+	_, err := s.conn.Exec("INSERT INTO item_tag (item_id, tag_id) VALUES (?, ?)", itemID, tagID)
+	require.NoError(t, err, "link item %d to tag %d", itemID, tagID)
+}
+
+func TestListTagsWithCount(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+
+	tagA := insertTestTag(t, s, "bolt")
+	tagB := insertTestTag(t, s, "nut")
+	_ = insertTestTag(t, s, "washer") // no items
+
+	item1 := insertTestItem(t, s, containerID, "M6 Bolt")
+	item2 := insertTestItem(t, s, containerID, "M8 Bolt")
+	item3 := insertTestItem(t, s, containerID, "M6 Nut")
+
+	linkItemTag(t, s, item1, tagA)
+	linkItemTag(t, s, item2, tagA)
+	linkItemTag(t, s, item3, tagB)
+
+	tags, err := s.ListTags(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, tags, 3)
+
+	// Tags are sorted alphabetically: bolt, nut, washer
+	assert.Equal(t, "bolt", tags[0].Name)
+	assert.Equal(t, 2, tags[0].ItemCount)
+
+	assert.Equal(t, "nut", tags[1].Name)
+	assert.Equal(t, 1, tags[1].ItemCount)
+
+	assert.Equal(t, "washer", tags[2].Name)
+	assert.Equal(t, 0, tags[2].ItemCount)
+}
+
+func TestRenameTag(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+
+	tagID := insertTestTag(t, s, "bolt")
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+	linkItemTag(t, s, itemID, tagID)
+
+	err := s.RenameTag(ctx, tagID, "screw")
+	require.NoError(t, err)
+
+	tags, err := s.ListTags(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, tags, 1)
+	assert.Equal(t, "screw", tags[0].Name)
+	assert.Equal(t, 1, tags[0].ItemCount)
+}
+
+func TestRenameTagNotFound(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	err := s.RenameTag(ctx, 99999, "anything")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestMergeTagsBasic(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+
+	tagA := insertTestTag(t, s, "bolt")
+	tagB := insertTestTag(t, s, "screw")
+	item1 := insertTestItem(t, s, containerID, "M6 Bolt")
+	item2 := insertTestItem(t, s, containerID, "M8 Bolt")
+	item3 := insertTestItem(t, s, containerID, "M6 Screw")
+
+	linkItemTag(t, s, item1, tagA)
+	linkItemTag(t, s, item2, tagA)
+	linkItemTag(t, s, item3, tagB)
+
+	err := s.MergeTags(ctx, tagA, tagB)
+	require.NoError(t, err)
+
+	tags, err := s.ListTags(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, tags, 1)
+	assert.Equal(t, "screw", tags[0].Name)
+	assert.Equal(t, 3, tags[0].ItemCount)
+}
+
+func TestMergeTagsDedup(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+
+	tagA := insertTestTag(t, s, "bolt")
+	tagB := insertTestTag(t, s, "screw")
+	item1 := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	// item1 has both tags
+	linkItemTag(t, s, item1, tagA)
+	linkItemTag(t, s, item1, tagB)
+
+	err := s.MergeTags(ctx, tagA, tagB)
+	require.NoError(t, err)
+
+	tags, err := s.ListTags(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, tags, 1)
+	assert.Equal(t, "screw", tags[0].Name)
+	assert.Equal(t, 1, tags[0].ItemCount) // no duplicate
+}
+
+func TestDeleteUnusedTag(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	_ = insertTestTag(t, s, "empty-tag")
+
+	tags, err := s.ListTags(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, tags, 1)
+
+	err = s.DeleteUnusedTag(ctx, tags[0].ID)
+	require.NoError(t, err)
+
+	tags, err = s.ListTags(ctx, "")
+	require.NoError(t, err)
+	assert.Len(t, tags, 0)
+}
+
+func TestDeleteUsedTagFails(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+
+	tagID := insertTestTag(t, s, "bolt")
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+	linkItemTag(t, s, itemID, tagID)
+
+	err := s.DeleteUnusedTag(ctx, tagID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTagInUse)
+
+	// Tag should still exist
+	tags, err := s.ListTags(ctx, "")
+	require.NoError(t, err)
+	assert.Len(t, tags, 1)
+}
