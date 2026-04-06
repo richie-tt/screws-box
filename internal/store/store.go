@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"screws-box/internal/model"
@@ -14,6 +15,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite" // register SQLite driver
 )
+
+// ErrTagInUse is returned when attempting to delete a tag that still has item associations.
+var ErrTagInUse = errors.New("tag is in use")
 
 // hashPassword hashes a password using bcrypt with default cost.
 func hashPassword(password string) string {
@@ -1200,14 +1204,19 @@ func (s *Store) ValidateCredentials(ctx context.Context, username, password stri
 }
 
 // ListTags returns all tags, optionally filtered by name prefix.
+// Each tag includes an ItemCount reflecting the number of associated items.
 func (s *Store) ListTags(ctx context.Context, prefix string) ([]model.TagResponse, error) {
 	var rows *sql.Rows
 	var err error
 
+	const baseQuery = `SELECT t.id, t.name, t.created_at, t.updated_at, COUNT(it.item_id) AS item_count
+		FROM tag t
+		LEFT JOIN item_tag it ON it.tag_id = t.id`
+
 	if prefix == "" {
-		rows, err = s.conn.QueryContext(ctx, "SELECT id, name, created_at, updated_at FROM tag ORDER BY name")
+		rows, err = s.conn.QueryContext(ctx, baseQuery+" GROUP BY t.id ORDER BY t.name")
 	} else {
-		rows, err = s.conn.QueryContext(ctx, "SELECT id, name, created_at, updated_at FROM tag WHERE name LIKE ? ORDER BY name", prefix+"%")
+		rows, err = s.conn.QueryContext(ctx, baseQuery+" WHERE t.name LIKE ? GROUP BY t.id ORDER BY t.name", prefix+"%")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query tags: %w", err)
@@ -1218,7 +1227,7 @@ func (s *Store) ListTags(ctx context.Context, prefix string) ([]model.TagRespons
 	for rows.Next() {
 		var t model.TagResponse
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&t.ID, &t.Name, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &createdAt, &updatedAt, &t.ItemCount); err != nil {
 			return nil, fmt.Errorf("scan tag: %w", err)
 		}
 		t.CreatedAt = model.FormatTime(createdAt)
@@ -1230,6 +1239,76 @@ func (s *Store) ListTags(ctx context.Context, prefix string) ([]model.TagRespons
 	}
 
 	return tags, nil
+}
+
+// RenameTag updates the name of a tag by ID.
+// Returns an error if the tag is not found or if the new name conflicts with an existing tag.
+func (s *Store) RenameTag(ctx context.Context, tagID int64, newName string) error {
+	res, err := s.conn.ExecContext(ctx,
+		"UPDATE tag SET name = ?, updated_at = datetime('now') WHERE id = ?",
+		newName, tagID)
+	if err != nil {
+		return fmt.Errorf("rename tag: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rename tag rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("tag not found")
+	}
+	return nil
+}
+
+// MergeTags moves all item associations from sourceID to targetID (deduplicating),
+// then deletes the source tag. Runs in a transaction.
+func (s *Store) MergeTags(ctx context.Context, sourceID, targetID int64) error {
+	tx, err := s.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("merge tags begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op
+
+	// Move associations from source to target, ignoring duplicates
+	if _, err := tx.ExecContext(ctx,
+		"INSERT OR IGNORE INTO item_tag (item_id, tag_id) SELECT item_id, ? FROM item_tag WHERE tag_id = ?",
+		targetID, sourceID); err != nil {
+		return fmt.Errorf("merge tags copy associations: %w", err)
+	}
+
+	// Remove old associations
+	if _, err := tx.ExecContext(ctx,
+		"DELETE FROM item_tag WHERE tag_id = ?", sourceID); err != nil {
+		return fmt.Errorf("merge tags delete old associations: %w", err)
+	}
+
+	// Delete source tag
+	if _, err := tx.ExecContext(ctx,
+		"DELETE FROM tag WHERE id = ?", sourceID); err != nil {
+		return fmt.Errorf("merge tags delete source: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+// DeleteUnusedTag deletes a tag only if it has no item associations.
+// Returns ErrTagInUse if the tag still has items.
+func (s *Store) DeleteUnusedTag(ctx context.Context, tagID int64) error {
+	res, err := s.conn.ExecContext(ctx,
+		`DELETE FROM tag WHERE id = ? AND NOT EXISTS (
+			SELECT 1 FROM item_tag WHERE tag_id = ?
+		)`, tagID, tagID)
+	if err != nil {
+		return fmt.Errorf("delete unused tag: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete unused tag rows affected: %w", err)
+	}
+	if n == 0 {
+		return ErrTagInUse
+	}
+	return nil
 }
 
 // GetOIDCConfig returns the OIDC configuration including the client secret.
