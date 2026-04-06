@@ -257,6 +257,11 @@ type AdminData struct {
 	OIDCClientID     string
 	OIDCDisplayName  string
 	OIDCSecretStatus string
+	SessionStoreType string
+	SessionCount     int
+	Sessions         []SessionInfo
+	CurrentSessionID string
+	SessionTTL       int64 // TTL in seconds for JS expiry calculation
 }
 
 func (srv *Server) handleAdmin() http.HandlerFunc {
@@ -284,6 +289,25 @@ func (srv *Server) handleAdmin() http.HandlerFunc {
 			adminData.OIDCDisplayName = oidcCfg.DisplayName
 			adminData.OIDCSecretStatus = oidcCfg.SecretStatus
 		}
+
+		// Populate session data for admin template
+		sessions, _ := srv.sessions.ListSessions(r.Context())
+		currentSess := srv.sessions.GetSession(r)
+		currentSessID := ""
+		if currentSess != nil {
+			currentSessID = currentSess.ID
+		}
+		var sessionInfos []SessionInfo
+		for _, s := range sessions {
+			sessionInfos = append(sessionInfos, mapSessionToInfo(s, currentSessID, srv.sessions.TTL()))
+		}
+		sortSessionInfos(sessionInfos)
+		adminData.SessionStoreType = srv.sessions.StoreType()
+		adminData.SessionCount = len(sessionInfos)
+		adminData.Sessions = sessionInfos
+		adminData.CurrentSessionID = currentSessID
+		adminData.SessionTTL = int64(srv.sessions.TTL().Seconds())
+
 		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
 			"layout.html", "admin.html")
 		if err != nil {
