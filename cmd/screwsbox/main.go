@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"screws-box/internal/model"
 	"screws-box/internal/server"
 	"screws-box/internal/session"
 	"screws-box/internal/store"
@@ -90,6 +91,8 @@ func run() error {
 	}
 	defer s.Close()
 
+	seedOIDCFromEnv(&s)
+
 	sessionTTL := parseSessionTTL()
 	memStore := session.NewMemoryStore(sessionTTL, sessionTTL/2)
 	defer memStore.Close()
@@ -128,4 +131,34 @@ func run() error {
 	defer cancel()
 
 	return srv.Shutdown(shutdownCtx)
+}
+
+func seedOIDCFromEnv(s *store.Store) {
+	issuer := os.Getenv("OIDC_ISSUER")
+	if issuer == "" {
+		return // no env vars set
+	}
+	ctx := context.Background()
+	// Only seed if not already configured in DB
+	existing, _ := s.GetOIDCConfig(ctx)
+	if existing != nil && existing.IssuerURL != "" {
+		slog.Info("OIDC config already exists in DB, skipping env var seed")
+		return
+	}
+	cfg := &model.OIDCConfig{
+		Enabled:      true,
+		IssuerURL:    issuer,
+		ClientID:     os.Getenv("OIDC_CLIENT_ID"),
+		ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
+		DisplayName:  os.Getenv("OIDC_DISPLAY_NAME"),
+	}
+	if cfg.ClientID == "" {
+		slog.Warn("OIDC_ISSUER set but OIDC_CLIENT_ID missing, skipping seed")
+		return
+	}
+	if err := s.SaveOIDCConfig(ctx, cfg); err != nil {
+		slog.Error("seed OIDC config from env", "err", err)
+		return
+	}
+	slog.Info("seeded OIDC config from environment variables", "issuer", issuer, "display_name", cfg.DisplayName)
 }

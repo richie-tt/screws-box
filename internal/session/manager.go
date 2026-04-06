@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
@@ -130,6 +131,12 @@ func (m *Manager) GetSession(r *http.Request) *Session {
 	}
 	m.store.Touch(r.Context(), c.Value)
 	return sess
+}
+
+// DeleteByAuthMethod deletes all sessions with the given auth method.
+// Returns the number of sessions deleted.
+func (m *Manager) DeleteByAuthMethod(ctx context.Context, method string) (int, error) {
+	return m.store.DeleteByAuthMethod(ctx, method)
 }
 
 // GetCSRFToken returns the server-side CSRF token for the current session.
