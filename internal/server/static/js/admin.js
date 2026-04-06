@@ -486,4 +486,165 @@
     });
   }
 
+  // --- Data Export/Import Section ---
+
+  var exportBtn = document.getElementById('export-btn');
+  var exportFeedback = document.getElementById('export-feedback');
+  var importFile = document.getElementById('import-file');
+  var validateBtn = document.getElementById('validate-btn');
+  var importFeedback = document.getElementById('import-feedback');
+  var importUploadArea = document.getElementById('import-upload-area');
+  var importSummaryArea = document.getElementById('import-summary-area');
+  var importErrorArea = document.getElementById('import-error-area');
+  var importBackBtn = document.getElementById('import-back-btn');
+  var importConfirmBtn = document.getElementById('import-confirm-btn');
+  var importRetryBtn = document.getElementById('import-retry-btn');
+  var currentImportToken = null;
+
+  if (exportBtn) {
+    exportBtn.addEventListener('click', function() {
+      exportBtn.textContent = 'Exporting...';
+      exportBtn.disabled = true;
+      exportFeedback.textContent = '';
+      exportFeedback.className = 'admin-form-feedback';
+      // Trigger browser download via navigation per D-17
+      window.location.href = '/api/export';
+      // Reset button after short delay (download starts async)
+      setTimeout(function() {
+        exportBtn.textContent = 'Export JSON';
+        exportBtn.disabled = false;
+      }, 2000);
+    });
+  }
+
+  if (importFile) {
+    importFile.addEventListener('change', function() {
+      if (importFile.files.length > 0) {
+        validateBtn.disabled = false;
+        validateBtn.className = 'btn';
+      } else {
+        validateBtn.disabled = true;
+        validateBtn.className = 'btn secondary';
+      }
+    });
+  }
+
+  function showImportUpload() {
+    importUploadArea.hidden = false;
+    importSummaryArea.hidden = true;
+    importErrorArea.hidden = true;
+    importFeedback.textContent = '';
+    importFeedback.className = 'admin-form-feedback';
+    importFile.value = '';
+    validateBtn.disabled = true;
+    validateBtn.className = 'btn secondary';
+    currentImportToken = null;
+  }
+
+  if (validateBtn) {
+    validateBtn.addEventListener('click', async function() {
+      if (!importFile.files.length) return;
+      validateBtn.textContent = 'Validating...';
+      validateBtn.disabled = true;
+      importFeedback.textContent = '';
+
+      var formData = new FormData();
+      formData.append('file', importFile.files[0]);
+
+      try {
+        var resp = await fetch('/api/import/validate', {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': getCSRFToken() },
+          body: formData
+        });
+        var result = await resp.json();
+
+        if (resp.ok) {
+          // Show summary per D-09
+          currentImportToken = result.token;
+          document.getElementById('summary-shelf').textContent =
+            '"' + result.summary.shelf_name + '" (' + result.summary.rows + ' x ' + result.summary.cols + ')';
+          document.getElementById('summary-containers').textContent = result.summary.containers;
+          document.getElementById('summary-items').textContent = result.summary.items;
+          document.getElementById('summary-tags').textContent = result.summary.tags;
+          importUploadArea.hidden = true;
+          importSummaryArea.hidden = false;
+          importErrorArea.hidden = true;
+        } else {
+          // Show validation errors using safe DOM methods (no innerHTML)
+          var errorsList = document.getElementById('validation-errors-list');
+          while (errorsList.firstChild) {
+            errorsList.removeChild(errorsList.firstChild);
+          }
+          (result.errors || []).forEach(function(errMsg) {
+            var li = document.createElement('li');
+            li.textContent = errMsg;
+            errorsList.appendChild(li);
+          });
+          importUploadArea.hidden = true;
+          importSummaryArea.hidden = true;
+          importErrorArea.hidden = false;
+        }
+      } catch (e) {
+        importFeedback.textContent = 'Validation request failed.';
+        importFeedback.className = 'admin-form-feedback error';
+      }
+
+      validateBtn.textContent = 'Validate File';
+      validateBtn.disabled = false;
+    });
+  }
+
+  if (importBackBtn) {
+    importBackBtn.addEventListener('click', showImportUpload);
+  }
+
+  if (importRetryBtn) {
+    importRetryBtn.addEventListener('click', showImportUpload);
+  }
+
+  if (importConfirmBtn) {
+    importConfirmBtn.addEventListener('click', async function() {
+      if (!currentImportToken) return;
+      importConfirmBtn.textContent = 'Importing...';
+      importConfirmBtn.disabled = true;
+
+      try {
+        var resp = await fetch('/api/import/confirm', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCSRFToken()
+          },
+          body: JSON.stringify({ token: currentImportToken })
+        });
+        var result = await resp.json();
+
+        if (resp.ok) {
+          // Show success and reload per UI spec
+          importSummaryArea.hidden = true;
+          importUploadArea.hidden = false;
+          importFeedback.textContent = result.message || 'Import complete. Data restored successfully.';
+          importFeedback.className = 'admin-form-feedback success';
+          currentImportToken = null;
+          setTimeout(function() { location.reload(); }, 2000);
+        } else {
+          importConfirmBtn.textContent = 'Replace All Data';
+          importConfirmBtn.disabled = false;
+          importFeedback.textContent = result.error || 'Import failed. Existing data was not modified.';
+          importFeedback.className = 'admin-form-feedback error';
+          importSummaryArea.hidden = true;
+          importUploadArea.hidden = false;
+        }
+      } catch (e) {
+        importConfirmBtn.textContent = 'Replace All Data';
+        importConfirmBtn.disabled = false;
+        importFeedback.textContent = 'Import request failed.';
+        importFeedback.className = 'admin-form-feedback error';
+        importSummaryArea.hidden = true;
+        importUploadArea.hidden = false;
+      }
+    });
+  }
+
 })();
