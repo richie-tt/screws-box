@@ -327,3 +327,11 @@ button[aria-busy="true"] {
   clip: rect(0, 0, 0, 0);
   border: 0;
 }
+
+/* Header user display name */
+.header-user {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-right: var(--space-xs);
+}

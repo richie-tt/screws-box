@@ -40,6 +40,11 @@ func (srv *Server) Router() http.Handler {
 		r.Get("/login", srv.handleLoginPage())
 		r.With(newRateLimitLogin()).Post("/login", srv.handleLoginPost())
 		r.Get("/logout", srv.handleLogout())
+
+		// OIDC routes (public -- callback must not be behind authMiddleware)
+		r.Get("/auth/oidc", srv.handleOIDCStart())
+		r.With(newRateLimitLogin()).Get("/auth/callback", srv.handleOIDCCallback())
+
 		r.Handle("/static/*", http.StripPrefix("/static/",
 			http.FileServerFS(mustSubFS(ContentFS, "static"))))
 

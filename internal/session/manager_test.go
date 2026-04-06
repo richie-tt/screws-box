@@ -210,7 +210,7 @@ func TestManager_CreateWithMethod_OIDC(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/auth/callback", nil)
 
-	err := mgr.CreateWithMethod(w, r, "alice", "oidc")
+	err := mgr.CreateWithMethod(w, r, "alice", "oidc", "")
 	require.NoError(t, err)
 
 	sessionCookieValue := ""
@@ -234,7 +234,7 @@ func TestManager_CreateWithMethod_SetsCookies(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/auth/callback", nil)
 
-	err := mgr.CreateWithMethod(w, r, "alice", "oidc")
+	err := mgr.CreateWithMethod(w, r, "alice", "oidc", "")
 	require.NoError(t, err)
 
 	resp := w.Result()

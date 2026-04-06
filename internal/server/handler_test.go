@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"screws-box/internal/model"
+	oidcpkg "screws-box/internal/oidc"
 	"screws-box/internal/session"
 	"screws-box/internal/store"
 	"strings"
@@ -886,9 +887,15 @@ type mockStore struct {
 	listTagsFn             func(ctx context.Context, prefix string) ([]model.TagResponse, error)
 	resizeShelfFn          func(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	updateShelfNameFn      func(ctx context.Context, name string) error
-	getAuthSettingsFn      func(ctx context.Context) (*model.AuthSettings, error)
-	updateAuthSettingsFn   func(ctx context.Context, settings *model.AuthSettings) error
-	validateCredentialsFn  func(ctx context.Context, username, password string) (bool, error)
+	getAuthSettingsFn        func(ctx context.Context) (*model.AuthSettings, error)
+	updateAuthSettingsFn     func(ctx context.Context, settings *model.AuthSettings) error
+	validateCredentialsFn    func(ctx context.Context, username, password string) (bool, error)
+	getOIDCConfigFn          func(ctx context.Context) (*model.OIDCConfig, error)
+	getOIDCConfigMaskedFn    func(ctx context.Context) (*model.OIDCConfig, error)
+	saveOIDCConfigFn         func(ctx context.Context, cfg *model.OIDCConfig) error
+	upsertOIDCUserFn         func(ctx context.Context, user *model.OIDCUser) (*model.OIDCUser, error)
+	getOIDCUserBySubFn       func(ctx context.Context, sub, issuer string) (*model.OIDCUser, error)
+	getOrCreateEncKeyFn      func(ctx context.Context) ([]byte, error)
 }
 
 func (m *mockStore) Ping(ctx context.Context) error {
@@ -975,6 +982,48 @@ func (m *mockStore) UpdateAuthSettings(ctx context.Context, settings *model.Auth
 
 func (m *mockStore) ValidateCredentials(ctx context.Context, username, password string) (bool, error) {
 	return m.validateCredentialsFn(ctx, username, password)
+}
+
+func (m *mockStore) GetOIDCConfig(ctx context.Context) (*model.OIDCConfig, error) {
+	if m.getOIDCConfigFn != nil {
+		return m.getOIDCConfigFn(ctx)
+	}
+	return nil, fmt.Errorf("not configured")
+}
+
+func (m *mockStore) GetOIDCConfigMasked(ctx context.Context) (*model.OIDCConfig, error) {
+	if m.getOIDCConfigMaskedFn != nil {
+		return m.getOIDCConfigMaskedFn(ctx)
+	}
+	return nil, fmt.Errorf("not configured")
+}
+
+func (m *mockStore) SaveOIDCConfig(ctx context.Context, cfg *model.OIDCConfig) error {
+	if m.saveOIDCConfigFn != nil {
+		return m.saveOIDCConfigFn(ctx, cfg)
+	}
+	return nil
+}
+
+func (m *mockStore) UpsertOIDCUser(ctx context.Context, user *model.OIDCUser) (*model.OIDCUser, error) {
+	if m.upsertOIDCUserFn != nil {
+		return m.upsertOIDCUserFn(ctx, user)
+	}
+	return user, nil
+}
+
+func (m *mockStore) GetOIDCUserBySub(ctx context.Context, sub, issuer string) (*model.OIDCUser, error) {
+	if m.getOIDCUserBySubFn != nil {
+		return m.getOIDCUserBySubFn(ctx, sub, issuer)
+	}
+	return nil, fmt.Errorf("not found")
+}
+
+func (m *mockStore) GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error) {
+	if m.getOrCreateEncKeyFn != nil {
+		return m.getOrCreateEncKeyFn(ctx)
+	}
+	return make([]byte, 32), nil
 }
 
 func errStore() *mockStore {
@@ -1348,4 +1397,145 @@ func TestAdminPageNavigation(t *testing.T) {
 	body := w.Body.String()
 	assert.Contains(t, body, `href="/"`, "admin page should have Back to Grid link")
 	assert.Contains(t, body, "Back to Grid", "admin page should have Back to Grid text")
+}
+
+// ==========================================================================
+// OIDC Handler Tests
+// ==========================================================================
+
+func newTestServerWithMock(t *testing.T, store StoreService) *Server {
+	t.Helper()
+	memStore := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
+	t.Cleanup(memStore.Close)
+	mgr := session.NewManager(memStore, 1*time.Hour)
+	return NewServer(store, mgr)
+}
+
+func oidcEnabledStore() *mockStore {
+	return &mockStore{
+		getAuthSettingsFn: func(_ context.Context) (*model.AuthSettings, error) {
+			return &model.AuthSettings{Enabled: true, Username: "admin", HasPassword: true}, nil
+		},
+		getOIDCConfigFn: func(_ context.Context) (*model.OIDCConfig, error) {
+			return &model.OIDCConfig{
+				Enabled:     true,
+				IssuerURL:   "https://idp.example.com",
+				ClientID:    "test-client",
+				DisplayName: "TestProvider",
+			}, nil
+		},
+		getOrCreateEncKeyFn: func(_ context.Context) ([]byte, error) {
+			return []byte("01234567890123456789012345678901"), nil
+		},
+	}
+}
+
+func oidcDisabledStore() *mockStore {
+	return &mockStore{
+		getAuthSettingsFn: func(_ context.Context) (*model.AuthSettings, error) {
+			return &model.AuthSettings{Enabled: true, Username: "admin", HasPassword: true}, nil
+		},
+		getOIDCConfigFn: func(_ context.Context) (*model.OIDCConfig, error) {
+			return &model.OIDCConfig{Enabled: false}, nil
+		},
+	}
+}
+
+func TestLoginPageWithOIDC(t *testing.T) {
+	srv := newTestServerWithMock(t, oidcEnabledStore())
+	router := srv.Router()
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "sso-btn", "should render SSO button")
+	assert.Contains(t, body, "Sign in with TestProvider", "should show provider display name")
+}
+
+func TestLoginPageWithoutOIDC(t *testing.T) {
+	srv := newTestServerWithMock(t, oidcDisabledStore())
+	router := srv.Router()
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.NotContains(t, body, "sso-btn", "should NOT render SSO button")
+	assert.Contains(t, body, `action="/login"`, "should still have login form")
+}
+
+func TestLoginPageWithOIDCError(t *testing.T) {
+	srv := newTestServerWithMock(t, oidcEnabledStore())
+	router := srv.Router()
+	req := httptest.NewRequest(http.MethodGet, "/login?error=sso_unavailable", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "SSO provider is unreachable", "should show SSO error message")
+}
+
+func TestOIDCCallbackMissingCode(t *testing.T) {
+	srv := newTestServerWithMock(t, oidcEnabledStore())
+	router := srv.Router()
+	req := httptest.NewRequest(http.MethodGet, "/auth/callback", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Contains(t, w.Header().Get("Location"), "/login?error=auth_failed")
+}
+
+func TestOIDCCallbackMissingStateCookie(t *testing.T) {
+	srv := newTestServerWithMock(t, oidcEnabledStore())
+	router := srv.Router()
+	req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=abc&state=xyz", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Contains(t, w.Header().Get("Location"), "/login?error=auth_failed")
+}
+
+func TestOIDCCallbackStateMismatch(t *testing.T) {
+	testKey := []byte("01234567890123456789012345678901")
+	ms := oidcEnabledStore()
+
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	// Encrypt a state cookie with state="correct_state"
+	encrypted, err := oidcpkg.EncryptStateCookie(testKey, &oidcpkg.StateCookie{
+		State:    "correct_state",
+		Nonce:    "test_nonce",
+		Verifier: "test_verifier",
+	})
+	require.NoError(t, err)
+
+	// Request with wrong state query param
+	req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=abc&state=wrong_state", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  oidcpkg.StateCookieName,
+		Value: encrypted,
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Contains(t, w.Header().Get("Location"), "/login?error=auth_failed")
+}
+
+func TestOIDCStartDisabled(t *testing.T) {
+	srv := newTestServerWithMock(t, oidcDisabledStore())
+	router := srv.Router()
+	req := httptest.NewRequest(http.MethodGet, "/auth/oidc", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/login", w.Header().Get("Location"))
 }
