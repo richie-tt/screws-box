@@ -4,7 +4,7 @@ A web application for managing hardware organizer boxes. Quickly find which cont
 
 Type a part name or tag and instantly see which grid position (e.g., "3B") holds it.
 
-<!-- Screenshot: Main grid view -->
+> **Grid View:** A chessboard-style grid showing labeled containers (e.g., "1A", "3B") with item counts. The search bar sits above the grid. Each cell is clickable to view or add items.
 
 ## Table of Contents
 
@@ -190,7 +190,7 @@ C  |    |    |    |    |    |
 
 Columns are numbered (1-5), rows are lettered (A-C). Container "3B" is column 3, row B.
 
-<!-- Screenshot: Grid view with containers -->
+> **Grid View:** Containers displayed as labeled cells with item counts. Click any cell to view its contents or add new items.
 
 **Adding items:**
 
@@ -205,7 +205,7 @@ Each container can hold multiple items. The grid cell shows how many items are i
 
 Type in the search bar at the top to find items by name, description, or tag. As you type, matching containers highlight on the grid so you can quickly spot where a part is stored.
 
-<!-- Screenshot: Search results with highlights -->
+> **Search:** Matching containers highlight on the grid as you type. Results show item names, tags, and container positions.
 
 **Multi-tag filtering:** Select tags from the filter dropdown to narrow results. When multiple tags are selected, only items matching ALL selected tags are shown.
 
@@ -218,7 +218,7 @@ Type in the search bar at the top to find items by name, description, or tag. As
 
 Access the admin panel via the "Admin" link in the header (visible when logged in).
 
-<!-- Screenshot: Admin panel -->
+> **Admin Panel:** A settings hub with sections for shelf configuration, authentication, OIDC setup, data export/import, and session management.
 
 The admin panel includes:
 
