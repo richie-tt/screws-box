@@ -33,10 +33,7 @@
             <a href="#shelf" class="admin-nav-item active">Shelf Settings</a>
             <a href="#auth" class="admin-nav-item">Authentication</a>
             <a href="#data" class="admin-nav-item">Data</a>
-            <span class="admin-nav-item disabled" aria-disabled="true">
-                Sessions
-                <small>coming soon</small>
-            </span>
+            <a href="#sessions" class="admin-nav-item">Sessions <small class="nav-badge" aria-live="polite">{{.SessionCount}}</small></a>
         </nav>
     </aside>
     <div class="admin-content">
@@ -197,6 +194,68 @@
                 </div>
             </div>
         </section>
+
+        <section class="admin-card" id="sessions" data-ttl="{{.SessionTTL}}">
+            <div class="sessions-header">
+                <h2>Sessions</h2>
+                <div class="sessions-header-actions">
+                    <span class="store-indicator {{if eq .SessionStoreType "Redis"}}store-redis{{end}}">{{.SessionStoreType}}</span>
+                    <button type="button" class="ghost sessions-refresh-btn" id="sessions-refresh" aria-label="Refresh sessions">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 2v5h5"/>
+                            <path d="M3.5 10a5 5 0 1 0 1-7L1 7"/>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+            {{if eq .SessionCount 0}}
+            <div class="sessions-empty" id="sessions-empty">
+                <p>No active sessions</p>
+                <p class="text-muted">Session store: {{.SessionStoreType}}</p>
+            </div>
+            {{else}}
+            <div class="sessions-table-wrap" id="sessions-table-wrap">
+                <table class="sessions-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">User</th>
+                            <th scope="col">Method</th>
+                            <th scope="col">Created</th>
+                            <th scope="col">Last Active</th>
+                            <th scope="col" class="sessions-col-expires">Expires In</th>
+                            <th scope="col" class="sessions-col-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sessions-tbody">
+                        {{range .Sessions}}
+                        <tr data-session-id="{{.ID}}" {{if .IsCurrent}}aria-label="Your current session"{{end}}>
+                            <td>{{.Username}}{{if .DisplayName}} ({{.DisplayName}}){{end}}</td>
+                            <td>{{.AuthMethod}}</td>
+                            <td class="sessions-timestamp">{{.CreatedAt}}</td>
+                            <td class="sessions-timestamp">{{.LastActivity}}</td>
+                            <td class="sessions-col-expires">{{.ExpiresIn}}</td>
+                            <td class="sessions-col-actions">
+                                {{if .IsCurrent}}
+                                <span class="session-badge-own">Your session</span>
+                                {{else}}
+                                <button type="button" class="ghost danger-ghost session-revoke-btn"
+                                    data-session-id="{{.ID}}"
+                                    data-username="{{.Username}}"
+                                    aria-label="Revoke session for {{.Username}}">Revoke</button>
+                                {{end}}
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+            <div class="admin-form-actions" id="sessions-bulk-actions">
+                <button type="button" class="btn danger" id="revoke-all-btn">Revoke All Others</button>
+                <span class="admin-form-feedback" id="sessions-feedback" role="status" aria-live="polite"></span>
+            </div>
+            {{end}}
+        </section>
     </div>
 </div>
 
@@ -207,6 +266,19 @@
         <div class="resize-modal-actions">
             <button type="button" class="btn ghost" id="resize-modal-cancel">Keep Current Size</button>
             <button type="button" class="btn danger" id="resize-modal-confirm">Resize Anyway</button>
+        </div>
+    </div>
+</div>
+
+<div class="resize-modal-overlay" id="revoke-modal-overlay">
+    <div class="resize-modal-dialog" role="dialog" aria-labelledby="revoke-modal-title">
+        <h3 id="revoke-modal-title">Revoke Session</h3>
+        <div id="revoke-modal-body">
+            <p id="revoke-modal-message"></p>
+        </div>
+        <div class="resize-modal-actions">
+            <button type="button" class="btn ghost" id="revoke-modal-cancel">Keep Session</button>
+            <button type="button" class="btn danger" id="revoke-modal-confirm">Revoke Session</button>
         </div>
     </div>
 </div>

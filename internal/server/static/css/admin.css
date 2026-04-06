@@ -360,7 +360,152 @@
   background: var(--bg-inset);
 }
 
+/* --- Sessions Section --- */
+
+.sessions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+}
+
+.sessions-header h2 {
+  margin-bottom: 0;
+}
+
+.sessions-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.store-indicator {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.store-indicator.store-redis {
+  background: hsl(145, 45%, 45%, 0.1);
+  color: var(--success);
+}
+
+.sessions-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.sessions-table-wrap {
+  overflow-x: auto;
+}
+
+.sessions-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sessions-table th {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 2px solid var(--border);
+}
+
+.sessions-table td {
+  font-size: 15px;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+
+.sessions-table tbody tr:hover {
+  background: var(--bg-inset);
+}
+
+.sessions-timestamp {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.sessions-col-expires {
+  color: var(--text-muted);
+}
+
+.sessions-col-actions {
+  text-align: right;
+  width: 100px;
+}
+
+.sessions-table th.sessions-col-actions {
+  text-align: right;
+}
+
+.session-badge-own {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.danger-ghost {
+  font-size: 12px;
+  color: var(--danger);
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+.danger-ghost:hover {
+  background: hsl(0, 65%, 50%, 0.08);
+}
+
+.sessions-empty {
+  padding: var(--space-xl) 0;
+  text-align: center;
+}
+
+.sessions-empty p:first-child {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sessions-empty .text-muted {
+  margin-top: var(--space-xs);
+}
+
+.nav-badge {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.session-row-removing {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
 /* --- Responsive --- */
+
+@media (max-width: 600px) {
+  .sessions-col-expires {
+    display: none;
+  }
+}
 
 @media (max-width: 768px) {
   .admin-layout {
@@ -387,5 +532,9 @@
   .admin-content {
     max-width: 100%;
     padding: var(--space-md);
+  }
+
+  .sessions-table {
+    min-width: 560px;
   }
 }
