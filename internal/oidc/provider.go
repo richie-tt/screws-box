@@ -96,21 +96,33 @@ func (p *Provider) ExchangeAndVerify(ctx context.Context, code, pkceVerifier, ex
 		return nil, fmt.Errorf("nonce mismatch: expected %q, got %q", expectedNonce, idToken.Nonce)
 	}
 
-	// Extract standard claims.
+	// Extract standard claims. Providers vary in which fields they populate,
+	// so we read multiple name-like claims and pick the best one.
 	var claims struct {
-		Email   string `json:"email"`
-		Name    string `json:"name"`
-		Picture string `json:"picture"`
-		Sub     string `json:"sub"`
+		Email             string `json:"email"`
+		Name              string `json:"name"`
+		PreferredUsername string `json:"preferred_username"`
+		DisplayName       string `json:"display_name"`
+		Picture           string `json:"picture"`
+		Sub               string `json:"sub"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("failed to extract claims: %w", err)
 	}
 
+	// Pick the best display name: name > display_name > preferred_username
+	displayName := claims.Name
+	if displayName == "" {
+		displayName = claims.DisplayName
+	}
+	if displayName == "" {
+		displayName = claims.PreferredUsername
+	}
+
 	return &IDTokenClaims{
 		Sub:         claims.Sub,
 		Email:       claims.Email,
-		DisplayName: claims.Name,
+		DisplayName: displayName,
 		AvatarURL:   claims.Picture,
 		Issuer:      p.issuer,
 		Nonce:       idToken.Nonce,
