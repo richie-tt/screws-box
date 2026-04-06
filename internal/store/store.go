@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"screws-box/internal/model"
@@ -78,6 +80,17 @@ var schemaDDL = []string{
 	`CREATE INDEX IF NOT EXISTS idx_item_container_id ON item(container_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_item_tag_item_id ON item_tag(item_id)`,
 	`CREATE INDEX IF NOT EXISTS idx_item_tag_tag_id ON item_tag(tag_id)`,
+	`CREATE TABLE IF NOT EXISTS oidc_user (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		sub TEXT NOT NULL,
+		issuer TEXT NOT NULL,
+		email TEXT NOT NULL DEFAULT '',
+		display_name TEXT NOT NULL DEFAULT '',
+		avatar_url TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		UNIQUE(sub, issuer)
+	)`,
 }
 
 // migrations runs ALTER TABLE statements for columns added after the initial schema.
@@ -86,6 +99,13 @@ var migrations = []string{
 	`ALTER TABLE shelf ADD COLUMN auth_enabled INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE shelf ADD COLUMN auth_user TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE shelf ADD COLUMN auth_pass TEXT NOT NULL DEFAULT ''`,
+	// OIDC config columns on shelf table
+	`ALTER TABLE shelf ADD COLUMN oidc_enabled INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE shelf ADD COLUMN oidc_issuer TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE shelf ADD COLUMN oidc_client_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE shelf ADD COLUMN oidc_client_secret TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE shelf ADD COLUMN oidc_display_name TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE shelf ADD COLUMN encryption_key TEXT NOT NULL DEFAULT ''`,
 }
 
 // deferRollback is used with defer to rollback a transaction.
@@ -1210,4 +1230,120 @@ func (s *Store) ListTags(ctx context.Context, prefix string) ([]model.TagRespons
 	}
 
 	return tags, nil
+}
+
+// GetOIDCConfig returns the OIDC configuration including the client secret.
+// For API responses, use GetOIDCConfigMasked instead (per T-14-01).
+func (s *Store) GetOIDCConfig(ctx context.Context) (*model.OIDCConfig, error) {
+	var enabled int
+	var issuer, clientID, clientSecret, displayName string
+	err := s.conn.QueryRowContext(ctx,
+		"SELECT oidc_enabled, oidc_issuer, oidc_client_id, oidc_client_secret, oidc_display_name FROM shelf LIMIT 1").
+		Scan(&enabled, &issuer, &clientID, &clientSecret, &displayName)
+	if err != nil {
+		return nil, fmt.Errorf("get oidc config: %w", err)
+	}
+	status := "not_set"
+	if clientSecret != "" {
+		status = "configured"
+	}
+	return &model.OIDCConfig{
+		Enabled:      enabled != 0,
+		IssuerURL:    issuer,
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		DisplayName:  displayName,
+		SecretStatus: status,
+	}, nil
+}
+
+// GetOIDCConfigMasked returns the OIDC configuration with the client secret stripped.
+// Safe for API responses per D-23 / T-14-01.
+func (s *Store) GetOIDCConfigMasked(ctx context.Context) (*model.OIDCConfig, error) {
+	cfg, err := s.GetOIDCConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ClientSecret = ""
+	return cfg, nil
+}
+
+// SaveOIDCConfig updates the OIDC configuration on the shelf.
+// If ClientSecret is empty, the existing secret is preserved.
+func (s *Store) SaveOIDCConfig(ctx context.Context, cfg *model.OIDCConfig) error {
+	enabled := 0
+	if cfg.Enabled {
+		enabled = 1
+	}
+	if cfg.ClientSecret != "" {
+		_, err := s.conn.ExecContext(ctx,
+			"UPDATE shelf SET oidc_enabled = ?, oidc_issuer = ?, oidc_client_id = ?, oidc_client_secret = ?, oidc_display_name = ?, updated_at = datetime('now') WHERE id = (SELECT id FROM shelf LIMIT 1)",
+			enabled, cfg.IssuerURL, cfg.ClientID, cfg.ClientSecret, cfg.DisplayName)
+		return err
+	}
+	// No secret change — keep existing
+	_, err := s.conn.ExecContext(ctx,
+		"UPDATE shelf SET oidc_enabled = ?, oidc_issuer = ?, oidc_client_id = ?, oidc_display_name = ?, updated_at = datetime('now') WHERE id = (SELECT id FROM shelf LIMIT 1)",
+		enabled, cfg.IssuerURL, cfg.ClientID, cfg.DisplayName)
+	return err
+}
+
+// UpsertOIDCUser creates or updates an OIDC user by sub+issuer.
+// Returns the upserted row.
+func (s *Store) UpsertOIDCUser(ctx context.Context, user *model.OIDCUser) (*model.OIDCUser, error) {
+	_, err := s.conn.ExecContext(ctx,
+		`INSERT INTO oidc_user (sub, issuer, email, display_name, avatar_url, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		 ON CONFLICT(sub, issuer) DO UPDATE SET
+			email = excluded.email,
+			display_name = excluded.display_name,
+			avatar_url = excluded.avatar_url,
+			updated_at = datetime('now')`,
+		user.Sub, user.Issuer, user.Email, user.DisplayName, user.AvatarURL)
+	if err != nil {
+		return nil, fmt.Errorf("upsert oidc user: %w", err)
+	}
+	return s.GetOIDCUserBySub(ctx, user.Sub, user.Issuer)
+}
+
+// GetOIDCUserBySub returns an OIDC user by subject ID and issuer.
+// Returns nil, nil if not found.
+func (s *Store) GetOIDCUserBySub(ctx context.Context, sub, issuer string) (*model.OIDCUser, error) {
+	var u model.OIDCUser
+	err := s.conn.QueryRowContext(ctx,
+		"SELECT id, sub, issuer, email, display_name, avatar_url, created_at, updated_at FROM oidc_user WHERE sub = ? AND issuer = ?",
+		sub, issuer).
+		Scan(&u.ID, &u.Sub, &u.Issuer, &u.Email, &u.DisplayName, &u.AvatarURL, &u.CreatedAt, &u.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get oidc user: %w", err)
+	}
+	return &u, nil
+}
+
+// GetOrCreateEncryptionKey returns the 32-byte AES-256 encryption key,
+// generating and persisting one if it doesn't exist yet (per D-16).
+func (s *Store) GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error) {
+	var keyHex string
+	err := s.conn.QueryRowContext(ctx, "SELECT encryption_key FROM shelf LIMIT 1").Scan(&keyHex)
+	if err != nil {
+		return nil, fmt.Errorf("get encryption key: %w", err)
+	}
+	if keyHex != "" {
+		return hex.DecodeString(keyHex)
+	}
+	// Generate new 32-byte key
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("generate encryption key: %w", err)
+	}
+	keyHex = hex.EncodeToString(key)
+	_, err = s.conn.ExecContext(ctx,
+		"UPDATE shelf SET encryption_key = ? WHERE id = (SELECT id FROM shelf LIMIT 1)", keyHex)
+	if err != nil {
+		return nil, fmt.Errorf("store encryption key: %w", err)
+	}
+	return key, nil
 }
