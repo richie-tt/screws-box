@@ -28,7 +28,7 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.Store) {
 
 	memStore := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
 	t.Cleanup(func() { memStore.Close() })
-	mgr := session.NewManager(memStore, 1*time.Hour)
+	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
 
 	srv := NewServer(s, mgr)
 	router := srv.Router()
@@ -1063,7 +1063,7 @@ func errStore() *mockStore {
 // errRouter creates a router backed by errStore and an in-memory session manager.
 func errRouter() http.Handler {
 	ms := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
-	mgr := session.NewManager(ms, 1*time.Hour)
+	mgr := session.NewManager(ms, 1*time.Hour, "Memory")
 	srv := NewServer(errStore(), mgr)
 	return srv.Router()
 }
@@ -1414,8 +1414,8 @@ func TestAdminPageNavigation(t *testing.T) {
 func newTestServerWithMock(t *testing.T, store StoreService) *Server {
 	t.Helper()
 	memStore := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
-	t.Cleanup(memStore.Close)
-	mgr := session.NewManager(memStore, 1*time.Hour)
+	t.Cleanup(func() { memStore.Close() })
+	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
 	return NewServer(store, mgr)
 }
 

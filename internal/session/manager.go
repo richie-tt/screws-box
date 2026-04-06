@@ -18,13 +18,14 @@ const (
 // Manager wraps a Store and handles cookie read/write for sessions.
 // Handlers call Manager methods instead of raw cookie operations.
 type Manager struct {
-	store Store
-	ttl   time.Duration
+	store     Store
+	ttl       time.Duration
+	storeType string
 }
 
-// NewManager creates a Manager with the given Store and TTL.
-func NewManager(store Store, ttl time.Duration) *Manager {
-	return &Manager{store: store, ttl: ttl}
+// NewManager creates a Manager with the given Store, TTL, and store type label.
+func NewManager(store Store, ttl time.Duration, storeType string) *Manager {
+	return &Manager{store: store, ttl: ttl, storeType: storeType}
 }
 
 // generateToken returns a cryptographically random 64-char hex string (256 bits).
@@ -150,4 +151,25 @@ func (m *Manager) GetCSRFToken(r *http.Request) string {
 		return ""
 	}
 	return sess.CSRFToken
+}
+
+// ListSessions returns all active sessions from the store.
+func (m *Manager) ListSessions(ctx context.Context) ([]*Session, error) {
+	return m.store.List(ctx)
+}
+
+// DeleteSession deletes a session by ID from the store.
+// Used by admin revocation.
+func (m *Manager) DeleteSession(ctx context.Context, id string) error {
+	return m.store.Delete(ctx, id)
+}
+
+// StoreType returns "Redis" or "Memory" for display in admin UI.
+func (m *Manager) StoreType() string {
+	return m.storeType
+}
+
+// TTL returns the session TTL duration for expiry calculations.
+func (m *Manager) TTL() time.Duration {
+	return m.ttl
 }
