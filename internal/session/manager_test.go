@@ -12,7 +12,7 @@ import (
 
 func newTestManager(ttl time.Duration) (*Manager, *MemoryStore) {
 	store := NewMemoryStore(ttl, 5*time.Minute)
-	mgr := NewManager(store, ttl)
+	mgr := NewManager(store, ttl, "Memory")
 	return mgr, store
 }
 

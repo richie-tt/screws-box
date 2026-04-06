@@ -32,7 +32,7 @@ func testRouter(t *testing.T, s *store.Store) http.Handler {
 	t.Helper()
 	ms := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
 	t.Cleanup(func() { ms.Close() })
-	mgr := session.NewManager(ms, 1*time.Hour)
+	mgr := session.NewManager(ms, 1*time.Hour, "Memory")
 	srv := server.NewServer(s, mgr)
 	return srv.Router()
 }

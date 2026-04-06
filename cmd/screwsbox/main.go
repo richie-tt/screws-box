@@ -94,13 +94,29 @@ func run() error {
 	seedOIDCFromEnv(&s)
 
 	sessionTTL := parseSessionTTL()
-	memStore := session.NewMemoryStore(sessionTTL, sessionTTL/2)
-	defer memStore.Close()
-	sessionMgr := session.NewManager(memStore, sessionTTL)
+	redisURL := os.Getenv("REDIS_URL")
+	var sessionStore session.Store
+	var storeType string
+	if redisURL != "" {
+		rs, err := session.NewRedisStore(redisURL, sessionTTL)
+		if err != nil {
+			slog.Error("failed to connect to Redis", "error", err)
+			os.Exit(1)
+		}
+		defer rs.Close()
+		storeType = "Redis"
+		sessionStore = rs
+		slog.Info("session store configured", "type", "redis", "ttl", sessionTTL)
+	} else {
+		ms := session.NewMemoryStore(sessionTTL, sessionTTL/2)
+		defer ms.Close()
+		storeType = "Memory"
+		sessionStore = ms
+		slog.Info("session store configured", "type", "memory", "ttl", sessionTTL)
+	}
+	sessionMgr := session.NewManager(sessionStore, sessionTTL, storeType)
 
 	appSrv := server.NewServer(&s, sessionMgr)
-
-	slog.Info("session store configured", "type", "memory", "ttl", sessionTTL)
 
 	port := os.Getenv("PORT")
 	if port == "" {
