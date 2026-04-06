@@ -243,8 +243,8 @@ func (srv *Server) handleGrid() http.HandlerFunc {
 	}
 }
 
-// AdminData is the view model for the admin template.
-type AdminData struct {
+// SettingsData is the view model for the settings template.
+type SettingsData struct {
 	ShelfName        string
 	Rows             int
 	Cols             int
@@ -264,15 +264,15 @@ type AdminData struct {
 	SessionTTL       int64 // TTL in seconds for JS expiry calculation
 }
 
-func (srv *Server) handleAdmin() http.HandlerFunc {
+func (srv *Server) handleSettings() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := srv.store.GetGridData()
 		if err != nil {
-			slog.Error("failed to load admin data", "err", err)
+			slog.Error("failed to load settings data", "err", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		adminData := AdminData{
+		settingsData := SettingsData{
 			ShelfName:       data.ShelfName,
 			Rows:            data.Rows,
 			Cols:            data.Cols,
@@ -283,14 +283,14 @@ func (srv *Server) handleAdmin() http.HandlerFunc {
 		}
 		oidcCfg, oidcErr := srv.store.GetOIDCConfigMasked(r.Context())
 		if oidcErr == nil {
-			adminData.OIDCEnabled = oidcCfg.Enabled
-			adminData.OIDCIssuer = oidcCfg.IssuerURL
-			adminData.OIDCClientID = oidcCfg.ClientID
-			adminData.OIDCDisplayName = oidcCfg.DisplayName
-			adminData.OIDCSecretStatus = oidcCfg.SecretStatus
+			settingsData.OIDCEnabled = oidcCfg.Enabled
+			settingsData.OIDCIssuer = oidcCfg.IssuerURL
+			settingsData.OIDCClientID = oidcCfg.ClientID
+			settingsData.OIDCDisplayName = oidcCfg.DisplayName
+			settingsData.OIDCSecretStatus = oidcCfg.SecretStatus
 		}
 
-		// Populate session data for admin template
+		// Populate session data for settings template
 		sessions, _ := srv.sessions.ListSessions(r.Context())
 		currentSess := srv.sessions.GetSession(r)
 		currentSessID := ""
@@ -302,22 +302,22 @@ func (srv *Server) handleAdmin() http.HandlerFunc {
 			sessionInfos = append(sessionInfos, mapSessionToInfo(s, currentSessID, srv.sessions.TTL()))
 		}
 		sortSessionInfos(sessionInfos)
-		adminData.SessionStoreType = srv.sessions.StoreType()
-		adminData.SessionCount = len(sessionInfos)
-		adminData.Sessions = sessionInfos
-		adminData.CurrentSessionID = currentSessID
-		adminData.SessionTTL = int64(srv.sessions.TTL().Seconds())
+		settingsData.SessionStoreType = srv.sessions.StoreType()
+		settingsData.SessionCount = len(sessionInfos)
+		settingsData.Sessions = sessionInfos
+		settingsData.CurrentSessionID = currentSessID
+		settingsData.SessionTTL = int64(srv.sessions.TTL().Seconds())
 
 		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
-			"layout.html", "admin.html")
+			"layout.html", "settings.html")
 		if err != nil {
-			slog.Error("admin template parse error", "err", err)
+			slog.Error("settings template parse error", "err", err)
 			http.Error(w, "template error", http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := tmpl.Execute(w, adminData); err != nil {
-			slog.Error("admin template execute error", "err", err)
+		if err := tmpl.Execute(w, settingsData); err != nil {
+			slog.Error("settings template execute error", "err", err)
 		}
 	}
 }

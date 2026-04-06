@@ -54,7 +54,7 @@ func (srv *Server) Router() http.Handler {
 			r.Use(srv.csrfProtect())
 
 			r.Get("/", srv.handleGrid())
-			r.Get("/admin", srv.handleAdmin())
+			r.Get("/settings", srv.handleSettings())
 
 			r.Route("/api", func(r chi.Router) {
 				r.Route("/items", func(r chi.Router) {
