@@ -69,6 +69,21 @@ func (m *MemoryStore) Touch(_ context.Context, id string) error {
 	return nil
 }
 
+// DeleteByAuthMethod removes all sessions with the given auth method.
+// Returns the number of sessions deleted.
+func (m *MemoryStore) DeleteByAuthMethod(_ context.Context, method string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	count := 0
+	for id, sess := range m.sessions {
+		if sess.AuthMethod == method {
+			delete(m.sessions, id)
+			count++
+		}
+	}
+	return count, nil
+}
+
 // Close stops the background cleanup goroutine.
 func (m *MemoryStore) Close() {
 	close(m.done)

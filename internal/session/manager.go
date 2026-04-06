@@ -43,10 +43,18 @@ func isSecure(r *http.Request) bool {
 
 // Create generates a new session for the given username, stores it,
 // and sets the session + CSRF cookies on the response.
+// AuthMethod is set to "local" for backward compatibility.
 func (m *Manager) Create(w http.ResponseWriter, r *http.Request, username string) error {
+	return m.CreateWithMethod(w, r, username, "local")
+}
+
+// CreateWithMethod generates a new session with the specified auth method,
+// stores it, and sets the session + CSRF cookies on the response.
+func (m *Manager) CreateWithMethod(w http.ResponseWriter, r *http.Request, username, authMethod string) error {
 	sess := &Session{
 		ID:           generateToken(),
 		Username:     username,
+		AuthMethod:   authMethod,
 		CSRFToken:    generateToken(),
 		CreatedAt:    time.Now(),
 		LastActivity: time.Now(),

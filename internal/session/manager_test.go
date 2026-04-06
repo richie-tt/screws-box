@@ -178,6 +178,86 @@ func TestManager_GetCSRFToken_NoSession(t *testing.T) {
 	assert.Empty(t, token)
 }
 
+func TestManager_CreateSetsLocalAuthMethod(t *testing.T) {
+	mgr, store := newTestManager(time.Hour)
+	t.Cleanup(store.Close)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/login", nil)
+
+	err := mgr.Create(w, r, "alice")
+	require.NoError(t, err)
+
+	// Find the session in the store
+	sessionCookieValue := ""
+	for _, c := range w.Result().Cookies() {
+		if c.Name == CookieName {
+			sessionCookieValue = c.Value
+		}
+	}
+	require.NotEmpty(t, sessionCookieValue)
+
+	sess, err := store.Get(r.Context(), sessionCookieValue)
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	assert.Equal(t, "local", sess.AuthMethod, "Create should set AuthMethod to 'local'")
+}
+
+func TestManager_CreateWithMethod_OIDC(t *testing.T) {
+	mgr, store := newTestManager(time.Hour)
+	t.Cleanup(store.Close)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/auth/callback", nil)
+
+	err := mgr.CreateWithMethod(w, r, "alice", "oidc")
+	require.NoError(t, err)
+
+	sessionCookieValue := ""
+	for _, c := range w.Result().Cookies() {
+		if c.Name == CookieName {
+			sessionCookieValue = c.Value
+		}
+	}
+	require.NotEmpty(t, sessionCookieValue)
+
+	sess, err := store.Get(r.Context(), sessionCookieValue)
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	assert.Equal(t, "oidc", sess.AuthMethod, "CreateWithMethod should set AuthMethod to 'oidc'")
+}
+
+func TestManager_CreateWithMethod_SetsCookies(t *testing.T) {
+	mgr, store := newTestManager(time.Hour)
+	t.Cleanup(store.Close)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/auth/callback", nil)
+
+	err := mgr.CreateWithMethod(w, r, "alice", "oidc")
+	require.NoError(t, err)
+
+	resp := w.Result()
+	cookies := resp.Cookies()
+
+	var sessionCookie, csrfCookie *http.Cookie
+	for _, c := range cookies {
+		switch c.Name {
+		case CookieName:
+			sessionCookie = c
+		case CSRFCookieName:
+			csrfCookie = c
+		}
+	}
+
+	require.NotNil(t, sessionCookie, "session cookie should be set")
+	require.NotNil(t, csrfCookie, "CSRF cookie should be set")
+	assert.Len(t, sessionCookie.Value, 64, "session token should be 64 hex chars")
+	assert.Len(t, csrfCookie.Value, 64, "CSRF token should be 64 hex chars")
+	assert.True(t, sessionCookie.HttpOnly, "session cookie should be HttpOnly")
+	assert.False(t, csrfCookie.HttpOnly, "CSRF cookie should NOT be HttpOnly")
+}
+
 func TestManager_GetUser_TouchesSession(t *testing.T) {
 	mgr, store := newTestManager(150 * time.Millisecond)
 	t.Cleanup(store.Close)

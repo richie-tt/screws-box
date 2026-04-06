@@ -140,6 +140,81 @@ func TestMemoryStore_Close(t *testing.T) {
 	// Just verify no goroutine leak by completing the test.
 }
 
+func TestMemoryStore_DeleteByAuthMethod(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	// Create 2 local + 1 oidc session
+	local1 := newTestSession("local1", "alice")
+	local1.AuthMethod = "local"
+	local2 := newTestSession("local2", "bob")
+	local2.AuthMethod = "local"
+	oidc1 := newTestSession("oidc1", "carol")
+	oidc1.AuthMethod = "oidc"
+
+	require.NoError(t, m.Create(ctx, local1))
+	require.NoError(t, m.Create(ctx, local2))
+	require.NoError(t, m.Create(ctx, oidc1))
+
+	count, err := m.DeleteByAuthMethod(ctx, "oidc")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "should delete 1 oidc session")
+
+	// Local sessions should remain
+	got, err := m.Get(ctx, "local1")
+	require.NoError(t, err)
+	assert.NotNil(t, got)
+
+	got, err = m.Get(ctx, "local2")
+	require.NoError(t, err)
+	assert.NotNil(t, got)
+
+	// OIDC session should be gone
+	got, err = m.Get(ctx, "oidc1")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestMemoryStore_DeleteByAuthMethod_Empty(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(m.Close)
+
+	count, err := m.DeleteByAuthMethod(context.Background(), "oidc")
+	require.NoError(t, err)
+	assert.Equal(t, 0, count, "empty store should return 0")
+}
+
+func TestMemoryStore_DeleteByAuthMethod_LocalOnly(t *testing.T) {
+	m := NewMemoryStore(time.Hour, 5*time.Minute)
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	local1 := newTestSession("local1", "alice")
+	local1.AuthMethod = "local"
+	oidc1 := newTestSession("oidc1", "bob")
+	oidc1.AuthMethod = "oidc"
+	oidc2 := newTestSession("oidc2", "carol")
+	oidc2.AuthMethod = "oidc"
+
+	require.NoError(t, m.Create(ctx, local1))
+	require.NoError(t, m.Create(ctx, oidc1))
+	require.NoError(t, m.Create(ctx, oidc2))
+
+	count, err := m.DeleteByAuthMethod(ctx, "local")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "should delete 1 local session")
+
+	// OIDC sessions should remain
+	got, err := m.Get(ctx, "oidc1")
+	require.NoError(t, err)
+	assert.NotNil(t, got)
+
+	got, err = m.Get(ctx, "oidc2")
+	require.NoError(t, err)
+	assert.NotNil(t, got)
+}
+
 func TestMemoryStore_ConcurrentAccess(t *testing.T) {
 	m := NewMemoryStore(time.Hour, 5*time.Minute)
 	t.Cleanup(m.Close)
