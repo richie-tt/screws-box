@@ -112,7 +112,7 @@ Plans:
 - [x] **Phase 14: OIDC Authentication** - Login via OIDC provider with PKCE, local auth fallback, admin config UI (completed 2026-04-06)
 - [x] **Phase 15: Data Export/Import** - JSON export download and validated import upload in admin panel (completed 2026-04-06)
 - [ ] **Phase 16: Redis Sessions** - Optional Redis-backed sessions with active session listing and revocation
-- [ ] **Phase 17: Documentation** - README.md with developer setup, user guide, configuration reference
+- [x] **Phase 17: Documentation** - README.md with developer setup, user guide, configuration reference (completed 2026-04-06)
 
 ## Phase Details
 
@@ -216,7 +216,10 @@ Plans:
   1. README contains developer setup instructions that work on a fresh clone (go build, run, verify)
   2. README documents all environment variables (REDIS_URL, OIDC settings) with examples
   3. README includes a user guide section explaining grid usage, search, and admin panel
-**Plans**: TBD
+**Plans:** 2/2 plans complete
+Plans:
+- [x] 17-01-PLAN.md — Deployment files (.env.example, docker-compose.yml, Dockerfile fix) + comprehensive README.md
+- [x] 17-02-PLAN.md — Validate Docker build, replace screenshot placeholders, human review
 
 ## Progress
 
@@ -242,7 +245,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14 -> 15 -> 16 -> 17
 | 14. OIDC Authentication | v1.1 | 4/4 | Complete    | 2026-04-06 |
 | 15. Data Export/Import | v1.1 | 2/2 | Complete    | 2026-04-06 |
 | 16. Redis Sessions | v1.1 | 0/2 | Planning complete | - |
-| 17. Documentation | v1.1 | 0/0 | Not started | - |
+| 17. Documentation | v1.1 | 2/2 | Complete    | 2026-04-06 |
 
 ---
 *Roadmap created: 2026-04-02*
