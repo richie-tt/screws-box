@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+var _ Store = (*MemoryStore)(nil)
+
 // MemoryStore is an in-memory Store backed by a map with RWMutex.
 type MemoryStore struct {
 	mu       sync.RWMutex
@@ -84,9 +86,27 @@ func (m *MemoryStore) DeleteByAuthMethod(_ context.Context, method string) (int,
 	return count, nil
 }
 
+// List returns all non-expired sessions.
+func (m *MemoryStore) List(_ context.Context) ([]*Session, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	now := time.Now()
+	var result []*Session
+	for _, sess := range m.sessions {
+		if now.Sub(sess.LastActivity) <= m.ttl {
+			result = append(result, sess)
+		}
+	}
+	if result == nil {
+		result = []*Session{}
+	}
+	return result, nil
+}
+
 // Close stops the background cleanup goroutine.
-func (m *MemoryStore) Close() {
+func (m *MemoryStore) Close() error {
 	close(m.done)
+	return nil
 }
 
 // cleanup periodically removes expired sessions.
