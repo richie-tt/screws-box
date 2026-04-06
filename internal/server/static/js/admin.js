@@ -647,4 +647,270 @@
     });
   }
 
+  // --- Sessions Section ---
+
+  var sessionsRefresh = document.getElementById('sessions-refresh');
+  var sessionsTbody = document.getElementById('sessions-tbody');
+  var sessionsFeedback = document.getElementById('sessions-feedback');
+  var revokeAllBtn = document.getElementById('revoke-all-btn');
+  var revokeOverlay = document.getElementById('revoke-modal-overlay');
+  var revokeTitle = document.getElementById('revoke-modal-title');
+  var revokeMessage = document.getElementById('revoke-modal-message');
+  var revokeConfirmBtn = document.getElementById('revoke-modal-confirm');
+  var revokeCancelBtn = document.getElementById('revoke-modal-cancel');
+  var pendingRevoke = null;
+
+  function refreshSessions() {
+    if (!sessionsRefresh) return;
+    setBusy(sessionsRefresh, true);
+    fetch('/api/sessions', {
+      headers: { 'X-CSRF-Token': getCSRFToken() }
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(sessions) {
+      setBusy(sessionsRefresh, false);
+      renderSessionsTable(sessions);
+      updateSessionBadge(sessions.length);
+    })
+    .catch(function() {
+      setBusy(sessionsRefresh, false);
+      if (sessionsFeedback) {
+        showFeedback(sessionsFeedback, 'Failed to load sessions. Check server logs and try again.', 'error');
+      }
+    });
+  }
+
+  function renderSessionsTable(sessions) {
+    if (!sessionsTbody) return;
+    var wrap = document.getElementById('sessions-table-wrap');
+    var empty = document.getElementById('sessions-empty');
+    var bulk = document.getElementById('sessions-bulk-actions');
+
+    if (sessions.length === 0) {
+      if (wrap) wrap.hidden = true;
+      if (bulk) bulk.hidden = true;
+      if (empty) {
+        empty.hidden = false;
+      } else {
+        var div = document.createElement('div');
+        div.className = 'sessions-empty';
+        div.id = 'sessions-empty';
+        var heading = document.createElement('p');
+        heading.textContent = 'No active sessions';
+        div.appendChild(heading);
+        var storeLabel = document.createElement('p');
+        storeLabel.className = 'text-muted';
+        var indicator = document.querySelector('.store-indicator');
+        storeLabel.textContent = 'Session store: ' + (indicator ? indicator.textContent : 'Unknown');
+        div.appendChild(storeLabel);
+        var sessionsCard = document.getElementById('sessions');
+        if (sessionsCard) sessionsCard.appendChild(div);
+      }
+      return;
+    }
+
+    if (wrap) wrap.hidden = false;
+    if (empty) empty.hidden = true;
+    if (bulk) {
+      var hasOthers = sessions.some(function(s) { return !s.is_current; });
+      bulk.hidden = !hasOthers;
+    }
+
+    while (sessionsTbody.firstChild) {
+      sessionsTbody.removeChild(sessionsTbody.firstChild);
+    }
+
+    sessions.forEach(function(s) {
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-session-id', s.id);
+      if (s.is_current) {
+        tr.setAttribute('aria-label', 'Your current session');
+      }
+
+      var tdUser = document.createElement('td');
+      tdUser.textContent = s.username + (s.display_name ? ' (' + s.display_name + ')' : '');
+      tr.appendChild(tdUser);
+
+      var tdMethod = document.createElement('td');
+      tdMethod.textContent = s.auth_method;
+      tr.appendChild(tdMethod);
+
+      var tdCreated = document.createElement('td');
+      tdCreated.className = 'sessions-timestamp';
+      tdCreated.textContent = s.created_at;
+      tr.appendChild(tdCreated);
+
+      var tdActive = document.createElement('td');
+      tdActive.className = 'sessions-timestamp';
+      tdActive.textContent = s.last_activity;
+      tr.appendChild(tdActive);
+
+      var tdExpires = document.createElement('td');
+      tdExpires.className = 'sessions-col-expires';
+      tdExpires.textContent = s.expires_in;
+      tr.appendChild(tdExpires);
+
+      var tdActions = document.createElement('td');
+      tdActions.className = 'sessions-col-actions';
+      if (s.is_current) {
+        var badge = document.createElement('span');
+        badge.className = 'session-badge-own';
+        badge.textContent = 'Your session';
+        tdActions.appendChild(badge);
+      } else {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ghost danger-ghost session-revoke-btn';
+        btn.setAttribute('data-session-id', s.id);
+        btn.setAttribute('data-username', s.username);
+        btn.setAttribute('aria-label', 'Revoke session for ' + s.username);
+        btn.textContent = 'Revoke';
+        tdActions.appendChild(btn);
+      }
+      tr.appendChild(tdActions);
+
+      sessionsTbody.appendChild(tr);
+    });
+  }
+
+  function updateSessionBadge(count) {
+    var badge = document.querySelector('.nav-badge');
+    if (badge) {
+      badge.textContent = count;
+    }
+  }
+
+  var sessionsCard = document.getElementById('sessions');
+  if (sessionsCard) {
+    sessionsCard.addEventListener('click', function(e) {
+      var btn = e.target.closest('.session-revoke-btn');
+      if (!btn) return;
+      var sessionId = btn.getAttribute('data-session-id');
+      var username = btn.getAttribute('data-username');
+      showRevokeModal('single', sessionId, username);
+    });
+  }
+
+  if (revokeAllBtn) {
+    revokeAllBtn.addEventListener('click', function() {
+      var rows = sessionsTbody ? sessionsTbody.querySelectorAll('tr') : [];
+      var otherCount = 0;
+      for (var i = 0; i < rows.length; i++) {
+        if (!rows[i].getAttribute('aria-label')) otherCount++;
+      }
+      showRevokeModal('bulk', null, null, otherCount);
+    });
+  }
+
+  function showRevokeModal(type, sessionId, username, count) {
+    if (!revokeOverlay) return;
+    pendingRevoke = { type: type, sessionId: sessionId };
+
+    if (type === 'single') {
+      revokeTitle.textContent = 'Revoke Session';
+      revokeMessage.textContent = 'Revoke session for ' + username + '? They will be forced to log in again.';
+      revokeConfirmBtn.textContent = 'Revoke Session';
+      revokeCancelBtn.textContent = 'Keep Session';
+    } else {
+      revokeTitle.textContent = 'Revoke All Other Sessions';
+      revokeMessage.textContent = 'Revoke ' + count + ' session' + (count !== 1 ? 's' : '') + '? All other users will be forced to log in again.';
+      revokeConfirmBtn.textContent = 'Revoke All';
+      revokeCancelBtn.textContent = 'Keep Sessions';
+    }
+
+    revokeOverlay.classList.add('visible');
+    revokeConfirmBtn.focus();
+  }
+
+  function hideRevokeModal() {
+    if (revokeOverlay) revokeOverlay.classList.remove('visible');
+    pendingRevoke = null;
+  }
+
+  if (revokeConfirmBtn) {
+    revokeConfirmBtn.addEventListener('click', function() {
+      if (!pendingRevoke) return;
+
+      if (pendingRevoke.type === 'single') {
+        var sid = pendingRevoke.sessionId;
+        hideRevokeModal();
+        fetch('/api/sessions/' + sid, {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': getCSRFToken() }
+        })
+        .then(function(resp) {
+          if (resp.ok) {
+            var row = sessionsTbody.querySelector('tr[data-session-id="' + sid + '"]');
+            if (row) {
+              row.classList.add('session-row-removing');
+              setTimeout(function() {
+                row.parentNode.removeChild(row);
+                var remaining = sessionsTbody.querySelectorAll('tr').length;
+                updateSessionBadge(remaining);
+                var hasOthers = sessionsTbody.querySelector('.session-revoke-btn');
+                var bulkEl = document.getElementById('sessions-bulk-actions');
+                if (!hasOthers && bulkEl) bulkEl.hidden = true;
+              }, 300);
+            }
+          } else {
+            resp.json().then(function(data) {
+              if (sessionsFeedback) showFeedback(sessionsFeedback, data.error || 'Failed to revoke session. Try again.', 'error');
+            });
+          }
+        })
+        .catch(function() {
+          if (sessionsFeedback) showFeedback(sessionsFeedback, 'Failed to revoke session. Try again.', 'error');
+        });
+      } else {
+        hideRevokeModal();
+        fetch('/api/sessions', {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': getCSRFToken() }
+        })
+        .then(function(resp) {
+          if (resp.ok) {
+            refreshSessions();
+          } else {
+            resp.json().then(function(data) {
+              if (sessionsFeedback) showFeedback(sessionsFeedback, data.error || 'Failed to revoke sessions.', 'error');
+            });
+          }
+        })
+        .catch(function() {
+          if (sessionsFeedback) showFeedback(sessionsFeedback, 'Failed to revoke sessions.', 'error');
+        });
+      }
+    });
+  }
+
+  if (revokeCancelBtn) {
+    revokeCancelBtn.addEventListener('click', hideRevokeModal);
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && revokeOverlay && revokeOverlay.classList.contains('visible')) {
+      hideRevokeModal();
+    }
+  });
+
+  if (revokeOverlay) {
+    revokeOverlay.addEventListener('keydown', function(e) {
+      if (e.key !== 'Tab') return;
+      var focusable = [revokeCancelBtn, revokeConfirmBtn];
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+  }
+
+  if (sessionsRefresh) {
+    sessionsRefresh.addEventListener('click', refreshSessions);
+  }
+
 })();

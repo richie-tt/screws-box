@@ -1368,7 +1368,8 @@ func TestHandleAdminPage(t *testing.T) {
 	assert.Contains(t, body, "admin-sidebar")
 	assert.Contains(t, body, "Shelf Settings")
 	assert.Contains(t, body, "Authentication")
-	assert.Contains(t, body, "coming soon")
+	assert.Contains(t, body, "Sessions")
+	assert.Contains(t, body, "nav-badge")
 	assert.Contains(t, body, "Back to Grid")
 }
 
