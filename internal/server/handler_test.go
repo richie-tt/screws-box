@@ -1325,3 +1325,27 @@ func TestHandleAdminShelfData(t *testing.T) {
 	body := w.Body.String()
 	assert.Contains(t, body, "Test Shelf")
 }
+
+func TestGridPageHasAdminLink(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, `href="/admin"`, "grid page should have Admin link")
+	assert.Contains(t, body, ">Admin</a>", "Admin link should have text 'Admin'")
+	assert.NotContains(t, body, "settings-trigger", "grid page should not have settings gear")
+}
+
+func TestAdminPageNavigation(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	// Verify admin page has Back to Grid link
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, `href="/"`, "admin page should have Back to Grid link")
+	assert.Contains(t, body, "Back to Grid", "admin page should have Back to Grid text")
+}
