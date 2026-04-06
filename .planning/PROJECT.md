@@ -2,72 +2,80 @@
 
 ## What This Is
 
-Aplikacja webowa do zarządzania organizerem na drobne elementy złączne (śruby, podkładki, nakrętki itp.). Prezentuje półkę jako konfigurowalną siatkę pojemników (np. 5x10), umożliwia dodawanie elementów z tagami/kategoriami i wyszukiwanie po nazwie lub tagu z wizualnym podświetleniem pozycji na siatce. Dostępna w sieci domowej.
+A web application for managing hardware organizer boxes. Presents a shelf as a configurable grid of containers (e.g., 5x10), supports adding items with tags/categories, and searching by name or tag with visual highlighting of positions on the grid. Features OIDC authentication, admin panel, data export/import, and optional Redis session persistence. Accessible on the home network.
 
 ## Core Value
 
-Szybkie znalezienie pozycji pojemnika (np. "3B") po wpisaniu nazwy lub tagu elementu.
+Quickly find which container position (e.g., "3B") holds a part by typing its name or tag.
 
 ## Requirements
 
 ### Validated
 
-- [x] Dostęp sieciowy (nie tylko localhost) — Validated in Phase 1: Project Skeleton
-- [x] Dane przechowywane w SQLite — Validated in Phase 2: Database Foundation
-- [x] Element ma nazwę i wiele tagów/kategorii — Validated in Phase 7: Tag Autocomplete (autocomplete prevents fragmentation)
+- ✓ Network access (0.0.0.0, not localhost) — v1.0
+- ✓ SQLite data storage — v1.0
+- ✓ Configurable shelf grid (e.g., 5x10) with safe resize — v1.0
+- ✓ Visual chessboard grid with labels (1A, 1B... 5J) — v1.0
+- ✓ Add items to containers by clicking grid cells — v1.0
+- ✓ Items have name and multiple tags — v1.0
+- ✓ Containers hold multiple items — v1.0
+- ✓ Text search by name or tag with grid highlighting — v1.0
+- ✓ Multi-tag AND filtering, description search, batch queries — v1.1
+- ✓ Session store interface with memory + Redis implementations — v1.1
+- ✓ OIDC authentication with PKCE, local auth fallback — v1.1
+- ✓ Admin panel (shelf settings, auth, OIDC config, export/import, sessions) — v1.1
+- ✓ JSON data export/import with validation — v1.1
+- ✓ Optional Redis session persistence via REDIS_URL — v1.1
+- ✓ Comprehensive README with setup, config, deployment guides — v1.1
 
 ### Active
 
-- [x] Konfigurowalna siatka półki (np. 5x10 = 10 kolumn, 5 rzędów) — Validated in Phase 10: Grid Resize Resilience (PUT /api/shelf/resize with blocking modal)
-- [ ] Wizualna reprezentacja siatki jako szachownica z oznaczeniami (1A, 1B... 5J)
-- [ ] Dodawanie elementów do pojemnika przez kliknięcie w siatkę
-- [x] Element ma nazwę i wiele tagów/kategorii (np. "m6", "sprężynowa", "falista", "powiększona") — Validated in Phase 5-7
-- [ ] Jeden pojemnik może zawierać wiele różnych elementów
-- [x] Wyszukiwanie tekstowe po nazwie lub tagu — Validated in Phase 12: Search Enhancement (batch SQL with GROUP_CONCAT, name OR tag OR description, multi-tag AND filtering)
-- [x] Wyniki wyszukiwania jako lista z pozycjami (np. "3B") — Validated in Phase 12: Search Enhancement (unified dropdown with matched_on highlights, total_count)
-- [x] Wizualne podświetlenie pasujących pojemników na siatce podczas wyszukiwania — Validated in Phase 12: Search Enhancement (grid highlights with match count badges)
-## Current Milestone: v1.1 Search, Auth & Admin
-
-**Goal:** Rozbudowa wyszukiwania o multi-tag filtering, pełne OIDC, dedykowana strona admin, persystencja sesji.
-
-**Target features:**
-- Przebudowa search — tag filter bar (multi-tag AND), main search szuka też w description
-- ~~OIDC authentication — Authelia, Google, GitHub (konfigurowalny provider)~~ ✓ Phase 14
-- ~~Admin panel jako osobna strona — auth settings, shelf settings, data export/import, active sessions~~ ✓ Phase 15 (data export/import)
-- Redis session store — opcjonalny (env REDIS_URL), fallback in-memory
-- README.md — developer + user dokumentacja
+(None — ready for next milestone)
 
 ### Out of Scope
 
-- Zarządzanie ilościami/inwentaryzacja — nie potrzebne, organizer nie śledzi stanów
-- Wiele półek — jedna półka wystarczy
-- Aplikacja mobilna — web responsywny wystarczy
-- OAuth2 bez OIDC — wymagamy OIDC discovery endpoint
+- Quantity tracking / inventory management — not needed, organizer doesn't track stock
+- Multiple shelves — one shelf is sufficient
+- Mobile app — responsive web is enough
+- OAuth2 without OIDC — requires OIDC discovery endpoint
+- GitHub as OIDC provider — not standard OIDC, use Authelia as proxy
+- Multiple simultaneous OIDC providers — overkill for single-user app
+- RBAC / multi-user roles — single admin user, auth is on/off
+- FTS5 full-text search — LIKE queries sufficient for home organizer scale
+- Redis as required dependency — must remain optional, single-binary + SQLite is core value
 
 ## Context
 
-- Użytkownik ma fizyczny organizer z pojemnikami ułożonymi w siatkę
-- Pojemniki zawierają różne drobne elementy złączne (śruby, podkładki, nakrętki różnych typów)
-- Główny problem: "gdzie jest M6 sprężynowa?" — trzeba przeszukiwać pojemniki ręcznie
-- Aplikacja rozwiązuje to — wpisujesz tag, dostajesz pozycję na siatce
-- Adresowanie: kolumny = cyfry (1, 2, 3...), rzędy = litery (A, B, C...) → pozycja "3B" = kolumna 3, rząd B
+**Current state:** v1.1 shipped (2026-04-06). 8,772 LOC Go. 17 phases across 2 milestones.
+
+**Tech stack:** Go 1.26+, chi v5, modernc.org/sqlite (CGo-free), go-oidc v3, go-redis v9. Custom CSS design system (DM Sans/DM Mono). html/template + htmx + vanilla JS.
+
+**Architecture:** Single binary via go:embed. SQLite WAL mode. Pluggable session store (memory/Redis). OIDC with AES-GCM encrypted state cookies. Docker multi-stage build (scratch image with CA certs).
+
+**Known tech debt:**
+- Dead interface methods: `SearchItems`/`SearchItemsByTags` in StoreService (replaced by `SearchItemsBatch`)
+- Human checkpoints pending: live OIDC E2E test, browser export/import round-trip
 
 ## Constraints
 
-- **Stack**: Go (Golang) backend, plain HTML frontend (plugin frontend-design do projektowania UI), SQLite baza danych
-- **Frontend design**: Użyć pluginu `frontend-design` do zaprojektowania interfejsu
-- **Deployment**: Dostępna w sieci domowej (nasłuch na 0.0.0.0, nie 127.0.0.1)
-- **Simplicity**: Jeden binary Go + plik SQLite, minimalna konfiguracja
+- **Stack**: Go backend, plain HTML frontend, SQLite database
+- **Deployment**: Home network (0.0.0.0, not 127.0.0.1)
+- **Simplicity**: Single Go binary + SQLite file, minimal configuration
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Go + SQLite + plain HTML | Prosty stack, jeden binary, zero zależności | — Pending |
-| Jedna półka w v1 | Prostota, użytkownik potrzebuje jednej | — Pending |
-| Tagi zamiast kategorii hierarchicznych | Elastyczność — element może mieć wiele tagów | — Pending |
-| Adresowanie: cyfra+litera (3B) | Intuicyjne, jak szachownica / arkusz kalkulacyjny | — Pending |
-| Plugin frontend-design dla UI | Lepszy design frontendu | — Pending |
+| Go + SQLite + plain HTML | Simple stack, single binary, zero dependencies | ✓ Good |
+| Single shelf in v1 | Simplicity — user needs one | ✓ Good |
+| Tags instead of hierarchical categories | Flexibility — items can have multiple tags | ✓ Good |
+| Addressing: number+letter (3B) | Intuitive, like a chessboard / spreadsheet | ✓ Good |
+| frontend-design plugin for UI | Better frontend design quality | ✓ Good |
+| Custom CSS over Pico CSS | Pico caused specificity wars with custom styles (removed Phase 6) | ✓ Good |
+| modernc.org/sqlite over mattn/go-sqlite3 | CGo-free, single-binary cross-compilation | ✓ Good |
+| Session Store interface | Enabled Redis, admin session listing without auth rewrite | ✓ Good |
+| OIDC with PKCE + AES-GCM state | Secure by default, no plaintext state in cookies | ✓ Good |
+| Docker Compose profiles for Redis | Optional Redis without bloating default compose | ✓ Good |
 
 ## Evolution
 
@@ -87,4 +95,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-06 after Phase 17 (Documentation) complete — v1.1 milestone shipped. README.md, Dockerfile, docker-compose.yml, .env.example added. All 17 phases complete.*
+*Last updated: 2026-04-06 after v1.1 milestone complete*
