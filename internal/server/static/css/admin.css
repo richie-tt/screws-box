@@ -499,6 +499,74 @@
   transition: opacity 0.3s ease;
 }
 
+/* --- Tag Management Table --- */
+
+.tags-filter { margin-bottom: var(--space-md); }
+
+.tags-table-wrap { overflow-x: auto; }
+
+.tags-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tags-table th {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 2px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tags-table td {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+}
+
+.tags-table tbody tr:hover { background: var(--bg-inset); }
+
+.tags-col-count { width: 80px; color: var(--text-muted); }
+.tags-col-actions { width: 100px; text-align: right; }
+
+.tags-table th.sortable { cursor: pointer; }
+.tags-table th[aria-sort] { color: var(--accent); }
+
+.tag-rename-input {
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tags-merge-prompt { font-size: 13px; line-height: 1.5; }
+
+.tags-empty {
+  padding: var(--space-xl) 0;
+  text-align: center;
+}
+
+.tag-row-success {
+  background: hsl(145, 45%, 45%, 0.1);
+  transition: background 0.5s ease;
+}
+
+.tag-row-removing {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.tags-actions-disabled { opacity: 0.3; pointer-events: none; }
+
 /* --- Responsive --- */
 
 @media (max-width: 600px) {
