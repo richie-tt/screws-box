@@ -343,6 +343,13 @@ mark {
   .search-unified-dropdown {
     max-height: 240px;
   }
+  .expanded-panel.panel-open {
+    max-height: none;
+    overflow-y: visible;
+  }
+  .item-actions {
+    opacity: 1;
+  }
 }
 
 /* ==========================================================================
@@ -569,20 +576,27 @@ mark {
    ========================================================================== */
 
 .expanded-panel {
-  position: fixed;
-  width: 300px;
-  max-height: 80vh;
-  overflow-y: auto;
+  position: static;
+  width: 100%;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
   padding: 0;
   text-align: left;
-  z-index: 100;
   font-size: 13px;
   line-height: 1.4;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-sm);
   cursor: default;
+  transition: max-height 200ms ease-out, opacity 200ms ease-out;
+}
+
+.expanded-panel.panel-open {
+  max-height: calc(100vh - 140px);
+  opacity: 1;
+  overflow-y: auto;
 }
 
 /* --- Panel header --- */
@@ -627,6 +641,12 @@ mark {
 /* --- Panel body --- */
 .panel-body {
   padding: var(--space-sm) 14px 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expanded-panel {
+    transition-duration: 0ms;
+  }
 }
 
 /* ==========================================================================

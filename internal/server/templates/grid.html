@@ -74,7 +74,8 @@
               data-coord="{{.Coord}}"
               data-container-id="{{.ContainerID}}"
               data-count="{{.Count}}"
-              type="button">
+              type="button"
+              aria-expanded="false">
         <span class="cell-coord">{{.Coord}}</span>
         <span class="cell-count">{{if .IsEmpty}}&mdash;{{else}}{{if eq .Count 1}}1 item{{else}}{{.Count}} items{{end}}{{end}}</span>
       </button>
