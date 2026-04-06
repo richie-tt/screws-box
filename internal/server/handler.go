@@ -3,14 +3,17 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"screws-box/internal/model"
+	oidcpkg "screws-box/internal/oidc"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/oauth2"
 )
 
 // StoreService defines the storage operations required by HTTP handlers.
@@ -34,6 +37,12 @@ type StoreService interface {
 	GetAuthSettings(ctx context.Context) (*model.AuthSettings, error)
 	UpdateAuthSettings(ctx context.Context, settings *model.AuthSettings) error
 	ValidateCredentials(ctx context.Context, username, password string) (bool, error)
+	GetOIDCConfig(ctx context.Context) (*model.OIDCConfig, error)
+	GetOIDCConfigMasked(ctx context.Context) (*model.OIDCConfig, error)
+	SaveOIDCConfig(ctx context.Context, cfg *model.OIDCConfig) error
+	UpsertOIDCUser(ctx context.Context, user *model.OIDCUser) (*model.OIDCUser, error)
+	GetOIDCUserBySub(ctx context.Context, sub, issuer string) (*model.OIDCUser, error)
+	GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error)
 }
 
 // --- Healthcheck ---
@@ -197,13 +206,26 @@ func (srv *Server) handleResizeShelf() http.HandlerFunc {
 
 // --- Template handler ---
 
+// getDisplayName returns the display name for the current session user.
+func (srv *Server) getDisplayName(r *http.Request) string {
+	sess := srv.sessions.GetSession(r)
+	if sess == nil {
+		return ""
+	}
+	if sess.DisplayName != "" {
+		return sess.DisplayName
+	}
+	return sess.Username
+}
+
 func (srv *Server) handleGrid() http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := srv.store.GetGridData()
 		if err != nil {
 			slog.Error("failed to load grid data", "err", err)
 			data = &model.GridData{Error: "Cannot load shelf -- check server logs."}
 		}
+		data.DisplayName = srv.getDisplayName(r)
 
 		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
 			"layout.html", "grid.html")
@@ -221,16 +243,22 @@ func (srv *Server) handleGrid() http.HandlerFunc {
 
 // AdminData is the view model for the admin template.
 type AdminData struct {
-	ShelfName       string
-	Rows            int
-	Cols            int
-	AuthEnabled     bool
-	AuthUser        string
-	AuthHasPassword bool
+	ShelfName        string
+	Rows             int
+	Cols             int
+	AuthEnabled      bool
+	AuthUser         string
+	AuthHasPassword  bool
+	DisplayName      string
+	OIDCEnabled      bool
+	OIDCIssuer       string
+	OIDCClientID     string
+	OIDCDisplayName  string
+	OIDCSecretStatus string
 }
 
 func (srv *Server) handleAdmin() http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := srv.store.GetGridData()
 		if err != nil {
 			slog.Error("failed to load admin data", "err", err)
@@ -244,6 +272,15 @@ func (srv *Server) handleAdmin() http.HandlerFunc {
 			AuthEnabled:     data.AuthEnabled,
 			AuthUser:        data.AuthUser,
 			AuthHasPassword: data.AuthHasPassword,
+			DisplayName:     srv.getDisplayName(r),
+		}
+		oidcCfg, oidcErr := srv.store.GetOIDCConfigMasked(r.Context())
+		if oidcErr == nil {
+			adminData.OIDCEnabled = oidcCfg.Enabled
+			adminData.OIDCIssuer = oidcCfg.IssuerURL
+			adminData.OIDCClientID = oidcCfg.ClientID
+			adminData.OIDCDisplayName = oidcCfg.DisplayName
+			adminData.OIDCSecretStatus = oidcCfg.SecretStatus
 		}
 		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
 			"layout.html", "admin.html")
@@ -519,7 +556,9 @@ func (srv *Server) authMiddleware() func(http.Handler) http.Handler {
 }
 
 type loginData struct {
-	Error string
+	Error           string
+	OIDCEnabled     bool
+	OIDCDisplayName string
 }
 
 func (srv *Server) handleLoginPage() http.HandlerFunc {
@@ -535,7 +574,26 @@ func (srv *Server) handleLoginPage() http.HandlerFunc {
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
-		renderLogin(w, loginData{})
+		data := loginData{}
+		// Check for error query params from OIDC callbacks
+		if errParam := r.URL.Query().Get("error"); errParam != "" {
+			switch errParam {
+			case "sso_unavailable":
+				data.Error = "SSO provider is unreachable. Use username and password to sign in."
+			default:
+				data.Error = "Authentication failed. Please try again."
+			}
+		}
+		// Load OIDC config to conditionally show SSO button
+		oidcCfg, oidcErr := srv.store.GetOIDCConfig(r.Context())
+		if oidcErr == nil && oidcCfg.Enabled && oidcCfg.IssuerURL != "" {
+			data.OIDCEnabled = true
+			data.OIDCDisplayName = oidcCfg.DisplayName
+			if data.OIDCDisplayName == "" {
+				data.OIDCDisplayName = "SSO"
+			}
+		}
+		renderLogin(w, data)
 	}
 }
 
@@ -568,6 +626,160 @@ func (srv *Server) handleLogout() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		srv.sessions.Destroy(w, r)
 		http.Redirect(w, r, "/login", http.StatusFound)
+	}
+}
+
+func (srv *Server) handleOIDCStart() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		// Load OIDC config
+		cfg, err := srv.store.GetOIDCConfig(ctx)
+		if err != nil || !cfg.Enabled {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		// Get encryption key
+		key, err := srv.store.GetOrCreateEncryptionKey(ctx)
+		if err != nil {
+			slog.Error("oidc start: get encryption key", "err", err)
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		// Build callback URL from request
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		callbackURL := fmt.Sprintf("%s://%s/auth/callback", scheme, r.Host)
+
+		// Create OIDC provider
+		provider, err := oidcpkg.NewProviderFromConfig(ctx, cfg.IssuerURL, cfg.ClientID, cfg.ClientSecret, callbackURL)
+		if err != nil {
+			slog.Error("oidc start: create provider", "err", err, "issuer", cfg.IssuerURL)
+			http.Redirect(w, r, "/login?error=sso_unavailable", http.StatusFound)
+			return
+		}
+		// Generate PKCE verifier, state, nonce
+		verifier := oauth2.GenerateVerifier()
+		state := oidcpkg.GenerateState()
+		nonce := oidcpkg.GenerateNonce()
+
+		// Encrypt state cookie
+		cookieValue, err := oidcpkg.EncryptStateCookie(key, &oidcpkg.StateCookie{
+			State:    state,
+			Nonce:    nonce,
+			Verifier: verifier,
+		})
+		if err != nil {
+			slog.Error("oidc start: encrypt state cookie", "err", err)
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		// Set state cookie and redirect to provider
+		secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+		http.SetCookie(w, oidcpkg.MakeStateCookieHTTP(cookieValue, secure))
+		authURL := provider.AuthURL(state, nonce, verifier)
+		http.Redirect(w, r, authURL, http.StatusFound)
+	}
+}
+
+func (srv *Server) handleOIDCCallback() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		// Check for error from provider
+		if errParam := r.URL.Query().Get("error"); errParam != "" {
+			slog.Warn("oidc callback: provider error", "error", errParam, "desc", r.URL.Query().Get("error_description"))
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		code := r.URL.Query().Get("code")
+		stateParam := r.URL.Query().Get("state")
+		if code == "" || stateParam == "" {
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		// Get encryption key
+		key, err := srv.store.GetOrCreateEncryptionKey(ctx)
+		if err != nil {
+			slog.Error("oidc callback: get encryption key", "err", err)
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		// Decrypt state cookie
+		stateCookie, err := r.Cookie(oidcpkg.StateCookieName)
+		if err != nil {
+			slog.Warn("oidc callback: state cookie missing")
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		sc, err := oidcpkg.DecryptStateCookie(key, stateCookie.Value)
+		if err != nil {
+			slog.Warn("oidc callback: decrypt state cookie failed", "err", err)
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		// Verify state matches (CSRF protection)
+		if sc.State != stateParam {
+			slog.Warn("oidc callback: state mismatch")
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		// Clear state cookie
+		secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+		http.SetCookie(w, oidcpkg.ClearStateCookieHTTP(secure))
+
+		// Load OIDC config
+		cfg, err := srv.store.GetOIDCConfig(ctx)
+		if err != nil || !cfg.Enabled {
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		// Build callback URL (same derivation as start handler)
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		callbackURL := fmt.Sprintf("%s://%s/auth/callback", scheme, r.Host)
+
+		// Create provider and exchange code
+		provider, err := oidcpkg.NewProviderFromConfig(ctx, cfg.IssuerURL, cfg.ClientID, cfg.ClientSecret, callbackURL)
+		if err != nil {
+			slog.Error("oidc callback: create provider", "err", err)
+			http.Redirect(w, r, "/login?error=sso_unavailable", http.StatusFound)
+			return
+		}
+		claims, err := provider.ExchangeAndVerify(ctx, code, sc.Verifier, sc.Nonce)
+		if err != nil {
+			slog.Error("oidc callback: exchange and verify", "err", err)
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+
+		// Determine username: email fallback to sub
+		username := claims.Email
+		if username == "" {
+			username = claims.Sub
+		}
+		// Upsert OIDC user record
+		_, err = srv.store.UpsertOIDCUser(ctx, &model.OIDCUser{
+			Sub:         claims.Sub,
+			Issuer:      claims.Issuer,
+			Email:       claims.Email,
+			DisplayName: claims.DisplayName,
+			AvatarURL:   claims.AvatarURL,
+		})
+		if err != nil {
+			slog.Error("oidc callback: upsert user", "err", err)
+			// Non-fatal: continue with session creation
+		}
+		// Create session with AuthMethod="oidc" and DisplayName
+		if err := srv.sessions.CreateWithMethod(w, r, username, "oidc", claims.DisplayName); err != nil {
+			slog.Error("oidc callback: create session", "err", err)
+			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+			return
+		}
+		// Redirect to grid
+		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
 

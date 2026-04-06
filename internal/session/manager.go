@@ -45,16 +45,17 @@ func isSecure(r *http.Request) bool {
 // and sets the session + CSRF cookies on the response.
 // AuthMethod is set to "local" for backward compatibility.
 func (m *Manager) Create(w http.ResponseWriter, r *http.Request, username string) error {
-	return m.CreateWithMethod(w, r, username, "local")
+	return m.CreateWithMethod(w, r, username, "local", "")
 }
 
 // CreateWithMethod generates a new session with the specified auth method,
 // stores it, and sets the session + CSRF cookies on the response.
-func (m *Manager) CreateWithMethod(w http.ResponseWriter, r *http.Request, username, authMethod string) error {
+func (m *Manager) CreateWithMethod(w http.ResponseWriter, r *http.Request, username, authMethod, displayName string) error {
 	sess := &Session{
 		ID:           generateToken(),
 		Username:     username,
 		AuthMethod:   authMethod,
+		DisplayName:  displayName,
 		CSRFToken:    generateToken(),
 		CreatedAt:    time.Now(),
 		LastActivity: time.Now(),
@@ -115,6 +116,20 @@ func (m *Manager) GetUser(r *http.Request) string {
 	}
 	m.store.Touch(r.Context(), c.Value)
 	return sess.Username
+}
+
+// GetSession returns the full Session for the current request, or nil if not authenticated.
+func (m *Manager) GetSession(r *http.Request) *Session {
+	c, err := r.Cookie(CookieName)
+	if err != nil {
+		return nil
+	}
+	sess, err := m.store.Get(r.Context(), c.Value)
+	if err != nil || sess == nil {
+		return nil
+	}
+	m.store.Touch(r.Context(), c.Value)
+	return sess
 }
 
 // GetCSRFToken returns the server-side CSRF token for the current session.

@@ -21,6 +21,10 @@
     {{if .Error}}
     <div class="login-error" role="alert">{{.Error}}</div>
     {{end}}
+    {{if .OIDCEnabled}}
+    <button type="button" class="sso-btn" onclick="window.location.href='/auth/oidc'">Sign in with {{.OIDCDisplayName}}</button>
+    <div class="login-divider"><span>or</span></div>
+    {{end}}
     <form method="POST" action="/login" class="login-form" autocomplete="on">
       <label for="login-user">Username</label>
       <input type="text" id="login-user" name="username" required autofocus
