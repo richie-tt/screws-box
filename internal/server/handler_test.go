@@ -1299,3 +1299,29 @@ func TestSearchTagsParam(t *testing.T) {
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, "Socket Head", resp.Results[0].Name)
 }
+
+func TestHandleAdminPage(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "admin-layout")
+	assert.Contains(t, body, "admin-sidebar")
+	assert.Contains(t, body, "Shelf Settings")
+	assert.Contains(t, body, "Authentication")
+	assert.Contains(t, body, "coming soon")
+	assert.Contains(t, body, "Back to Grid")
+}
+
+func TestHandleAdminShelfData(t *testing.T) {
+	router, s := setupTestRouter(t)
+	require.NoError(t, s.UpdateShelfName(context.Background(), "Test Shelf"))
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Test Shelf")
+}
