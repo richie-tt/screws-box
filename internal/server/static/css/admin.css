@@ -1,10 +1,10 @@
 /* ==========================================================================
-   Settings Panel — Sidebar + Content layout
+   Admin Panel — Sidebar + Content layout
    ========================================================================== */
 
 /* --- Layout --- */
 
-.settings-layout {
+.admin-layout {
   display: flex;
   gap: var(--space-lg);
   min-height: calc(100dvh - 120px);
@@ -13,7 +13,7 @@
   padding: var(--space-md);
 }
 
-.settings-sidebar {
+.admin-sidebar {
   width: 220px;
   flex-shrink: 0;
   position: sticky;
@@ -27,13 +27,13 @@
 
 /* --- Sidebar Navigation --- */
 
-.settings-nav {
+.admin-nav {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
 }
 
-.settings-nav-item {
+.admin-nav-item {
   display: block;
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-md);
@@ -45,25 +45,25 @@
   transition: background 0.15s ease;
 }
 
-.settings-nav-item:hover {
+.admin-nav-item:hover {
   background: var(--bg-inset);
 }
 
-.settings-nav-item.active {
+.admin-nav-item.active {
   font-weight: 600;
   color: var(--accent);
   border-left: 3px solid var(--accent);
   background: var(--accent-subtle);
 }
 
-.settings-nav-item.disabled {
+.admin-nav-item.disabled {
   color: var(--text-muted);
   opacity: 0.5;
   cursor: default;
   pointer-events: none;
 }
 
-.settings-nav-item.disabled small {
+.admin-nav-item.disabled small {
   display: block;
   font-size: 11px;
   margin-top: 2px;
@@ -71,7 +71,7 @@
 
 /* --- Content Area --- */
 
-.settings-content {
+.admin-content {
   flex: 1;
   min-width: 0;
   max-width: 640px;
@@ -80,7 +80,7 @@
 
 /* --- Cards --- */
 
-.settings-card {
+.admin-card {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -89,7 +89,7 @@
   margin-bottom: var(--space-lg);
 }
 
-.settings-card h2 {
+.admin-card h2 {
   font-family: 'DM Mono', monospace;
   font-size: 1.2rem;
   font-weight: 600;
@@ -98,34 +98,34 @@
 
 /* --- Forms --- */
 
-.settings-form {
+.admin-form {
   margin-top: var(--space-sm);
 }
 
-.settings-divider {
+.admin-divider {
   border: none;
   border-top: 1px solid var(--border);
   margin: var(--space-lg) 0;
 }
 
-.settings-form-actions {
+.admin-form-actions {
   margin-top: var(--space-md);
   display: flex;
   align-items: center;
   gap: var(--space-sm);
 }
 
-.settings-form-feedback {
+.admin-form-feedback {
   font-size: 13px;
   margin-left: var(--space-sm);
   transition: opacity 0.3s ease;
 }
 
-.settings-form-feedback.success {
+.admin-form-feedback.success {
   color: var(--success);
 }
 
-.settings-form-feedback.error {
+.admin-form-feedback.error {
   color: var(--danger);
 }
 
@@ -201,7 +201,7 @@
 }
 
 /* OIDC / SSO subsection */
-.settings-subsection-title {
+.admin-subsection-title {
   font-family: 'DM Mono', monospace;
   font-size: 12px;
   font-weight: 600;
@@ -508,11 +508,11 @@
 }
 
 @media (max-width: 768px) {
-  .settings-layout {
+  .admin-layout {
     flex-direction: column;
   }
 
-  .settings-sidebar {
+  .admin-sidebar {
     width: 100%;
     position: static;
     border-right: none;
@@ -520,16 +520,16 @@
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
 
-  .settings-nav {
+  .admin-nav {
     flex-direction: row;
     overflow-x: auto;
   }
 
-  .settings-nav-item {
+  .admin-nav-item {
     white-space: nowrap;
   }
 
-  .settings-content {
+  .admin-content {
     max-width: 100%;
     padding: var(--space-md);
   }

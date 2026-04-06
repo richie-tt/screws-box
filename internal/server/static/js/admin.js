@@ -23,18 +23,18 @@
 
   function showFeedback(el, message, type) {
     el.textContent = message;
-    el.className = 'settings-form-feedback ' + type;
+    el.className = 'admin-form-feedback ' + type;
     if (type === 'success') {
       setTimeout(function() {
         el.textContent = '';
-        el.className = 'settings-form-feedback';
+        el.className = 'admin-form-feedback';
       }, 2000);
     }
   }
 
   function clearFeedback(el) {
     el.textContent = '';
-    el.className = 'settings-form-feedback';
+    el.className = 'admin-form-feedback';
   }
 
   function setBusy(btn, busy) {
@@ -55,7 +55,7 @@
   if (shelfNameForm) {
     var nameInput = shelfNameForm.querySelector('#shelf-name-input');
     var nameBtn = shelfNameForm.querySelector('button[type="submit"]');
-    var nameFeedback = shelfNameForm.querySelector('.settings-form-feedback');
+    var nameFeedback = shelfNameForm.querySelector('.admin-form-feedback');
     var resizeRowsInput = document.getElementById('resize-rows');
     var resizeColsInput = document.getElementById('resize-cols');
 
@@ -106,7 +106,7 @@
     var rowsInput = resizeForm.querySelector('#resize-rows');
     var colsInput = resizeForm.querySelector('#resize-cols');
     var resizeBtn = resizeForm.querySelector('button[type="submit"]');
-    var resizeFeedback = resizeForm.querySelector('.settings-form-feedback');
+    var resizeFeedback = resizeForm.querySelector('.admin-form-feedback');
     var currentText = document.getElementById('resize-current');
 
     var previousRows = parseInt(rowsInput.value, 10);
@@ -270,7 +270,7 @@
     var authUsername = document.getElementById('auth-username');
     var authPassword = document.getElementById('auth-password');
     var authBtn = authForm.querySelector('button[type="submit"]');
-    var authFeedback = authForm.querySelector('.settings-form-feedback');
+    var authFeedback = authForm.querySelector('.admin-form-feedback');
 
     // Toggle auth fields visibility
     if (authToggle) {
@@ -388,7 +388,7 @@
   if (oidcForm) {
     oidcForm.addEventListener('submit', function(e) {
       e.preventDefault();
-      var feedback = oidcForm.querySelector('.settings-form-feedback');
+      var feedback = oidcForm.querySelector('.admin-form-feedback');
       var btn = oidcSaveBtn;
       setBusy(btn, true);
       clearFeedback(feedback);
@@ -446,7 +446,7 @@
 
   // --- Sidebar Navigation ---
 
-  var navItems = document.querySelectorAll('.settings-nav-item:not(.disabled)');
+  var navItems = document.querySelectorAll('.admin-nav-item:not(.disabled)');
   navItems.forEach(function(item) {
     item.addEventListener('click', function(e) {
       var href = item.getAttribute('href');
@@ -464,7 +464,7 @@
   });
 
   // IntersectionObserver for scroll-based active state
-  var sections = document.querySelectorAll('.settings-card[id]');
+  var sections = document.querySelectorAll('.admin-card[id]');
   if (sections.length > 0 && 'IntersectionObserver' in window) {
     var observer = new IntersectionObserver(function(entries) {
       entries.forEach(function(entry) {
@@ -506,7 +506,7 @@
       exportBtn.textContent = 'Exporting...';
       exportBtn.disabled = true;
       exportFeedback.textContent = '';
-      exportFeedback.className = 'settings-form-feedback';
+      exportFeedback.className = 'admin-form-feedback';
       // Trigger browser download via navigation per D-17
       window.location.href = '/api/export';
       // Reset button after short delay (download starts async)
@@ -534,7 +534,7 @@
     importSummaryArea.hidden = true;
     importErrorArea.hidden = true;
     importFeedback.textContent = '';
-    importFeedback.className = 'settings-form-feedback';
+    importFeedback.className = 'admin-form-feedback';
     importFile.value = '';
     validateBtn.disabled = true;
     validateBtn.className = 'btn secondary';
@@ -587,7 +587,7 @@
         }
       } catch (e) {
         importFeedback.textContent = 'Validation request failed.';
-        importFeedback.className = 'settings-form-feedback error';
+        importFeedback.className = 'admin-form-feedback error';
       }
 
       validateBtn.textContent = 'Validate File';
@@ -625,14 +625,14 @@
           importSummaryArea.hidden = true;
           importUploadArea.hidden = false;
           importFeedback.textContent = result.message || 'Import complete. Data restored successfully.';
-          importFeedback.className = 'settings-form-feedback success';
+          importFeedback.className = 'admin-form-feedback success';
           currentImportToken = null;
           setTimeout(function() { location.reload(); }, 2000);
         } else {
           importConfirmBtn.textContent = 'Replace All Data';
           importConfirmBtn.disabled = false;
           importFeedback.textContent = result.error || 'Import failed. Existing data was not modified.';
-          importFeedback.className = 'settings-form-feedback error';
+          importFeedback.className = 'admin-form-feedback error';
           importSummaryArea.hidden = true;
           importUploadArea.hidden = false;
         }
@@ -640,7 +640,7 @@
         importConfirmBtn.textContent = 'Replace All Data';
         importConfirmBtn.disabled = false;
         importFeedback.textContent = 'Import request failed.';
-        importFeedback.className = 'settings-form-feedback error';
+        importFeedback.className = 'admin-form-feedback error';
         importSummaryArea.hidden = true;
         importUploadArea.hidden = false;
       }

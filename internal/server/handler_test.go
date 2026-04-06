@@ -1357,15 +1357,15 @@ func TestSearchTagsParam(t *testing.T) {
 	assert.Equal(t, "Socket Head", resp.Results[0].Name)
 }
 
-func TestHandleSettingsPage(t *testing.T) {
+func TestHandleAdminPage(t *testing.T) {
 	router, _ := setupTestRouter(t)
-	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
-	assert.Contains(t, body, "settings-layout")
-	assert.Contains(t, body, "settings-sidebar")
+	assert.Contains(t, body, "admin-layout")
+	assert.Contains(t, body, "admin-sidebar")
 	assert.Contains(t, body, "Shelf Settings")
 	assert.Contains(t, body, "Authentication")
 	assert.Contains(t, body, "Sessions")
@@ -1373,10 +1373,10 @@ func TestHandleSettingsPage(t *testing.T) {
 	assert.Contains(t, body, "Back to Grid")
 }
 
-func TestHandleSettingsShelfData(t *testing.T) {
+func TestHandleAdminShelfData(t *testing.T) {
 	router, s := setupTestRouter(t)
 	require.NoError(t, s.UpdateShelfName(context.Background(), "Test Shelf"))
-	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -1384,28 +1384,28 @@ func TestHandleSettingsShelfData(t *testing.T) {
 	assert.Contains(t, body, "Test Shelf")
 }
 
-func TestGridPageHasSettingsLink(t *testing.T) {
+func TestGridPageHasAdminLink(t *testing.T) {
 	router, _ := setupTestRouter(t)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
-	assert.Contains(t, body, `href="/settings"`, "grid page should have Settings link")
-	assert.Contains(t, body, ">Settings</a>", "Settings link should have text 'Settings'")
+	assert.Contains(t, body, `href="/admin"`, "grid page should have Admin link")
+	assert.Contains(t, body, ">Admin</a>", "Admin link should have text 'Admin'")
 	assert.NotContains(t, body, "settings-trigger", "grid page should not have settings gear")
 }
 
-func TestSettingsPageNavigation(t *testing.T) {
+func TestAdminPageNavigation(t *testing.T) {
 	router, _ := setupTestRouter(t)
-	// Verify settings page has Back to Grid link
-	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	// Verify admin page has Back to Grid link
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
-	assert.Contains(t, body, `href="/"`, "settings page should have Back to Grid link")
-	assert.Contains(t, body, "Back to Grid", "settings page should have Back to Grid text")
+	assert.Contains(t, body, `href="/"`, "admin page should have Back to Grid link")
+	assert.Contains(t, body, "Back to Grid", "admin page should have Back to Grid text")
 }
 
 // ==========================================================================
