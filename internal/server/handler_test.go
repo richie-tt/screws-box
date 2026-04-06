@@ -1026,6 +1026,14 @@ func (m *mockStore) GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error
 	return make([]byte, 32), nil
 }
 
+func (m *mockStore) ExportAllData(_ context.Context) (*model.ExportData, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockStore) ImportAllData(_ context.Context, _ *model.ExportData) error {
+	return fmt.Errorf("not implemented")
+}
+
 func errStore() *mockStore {
 	dbErr := fmt.Errorf("database error")
 	return &mockStore{

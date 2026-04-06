@@ -43,6 +43,8 @@ type StoreService interface {
 	UpsertOIDCUser(ctx context.Context, user *model.OIDCUser) (*model.OIDCUser, error)
 	GetOIDCUserBySub(ctx context.Context, sub, issuer string) (*model.OIDCUser, error)
 	GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error)
+	ExportAllData(ctx context.Context) (*model.ExportData, error)
+	ImportAllData(ctx context.Context, data *model.ExportData) error
 }
 
 // --- Healthcheck ---
