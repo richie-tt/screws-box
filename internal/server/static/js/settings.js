@@ -477,6 +477,9 @@
               n.classList.remove('active');
             }
           });
+          if (id === 'housekeeping') {
+            loadDuplicates();
+          }
         }
       });
     }, { threshold: 0.3 });
@@ -1410,6 +1413,116 @@
   // Initialize tags section
   if (tagsTbody) {
     fetchTags();
+  }
+
+  // --- Housekeeping: Duplicate Detection ---
+
+  var housekeepingLoaded = false;
+
+  function loadDuplicates() {
+    if (housekeepingLoaded) return;
+    var content = document.getElementById('housekeeping-content');
+    if (!content) return;
+
+    var csrf = getCSRFToken();
+    fetch('/api/duplicates', {
+      headers: { 'X-CSRF-Token': csrf }
+    })
+    .then(function(res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(function(groups) {
+      housekeepingLoaded = true;
+      while (content.firstChild) content.removeChild(content.firstChild);
+
+      if (!groups || groups.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'housekeeping-empty';
+        var p1 = document.createElement('p');
+        p1.textContent = 'No duplicates found';
+        var p2 = document.createElement('p');
+        p2.className = 'text-muted';
+        p2.textContent = 'All items are unique across containers.';
+        empty.appendChild(p1);
+        empty.appendChild(p2);
+        content.appendChild(empty);
+        return;
+      }
+
+      groups.forEach(function(group) {
+        content.appendChild(renderDuplicateCard(group));
+      });
+    })
+    .catch(function() {
+      while (content.firstChild) content.removeChild(content.firstChild);
+      var errP = document.createElement('p');
+      errP.className = 'text-muted';
+      errP.textContent = 'Could not load duplicates. Try refreshing the page.';
+      content.appendChild(errP);
+    });
+  }
+
+  function renderDuplicateCard(group) {
+    var card = document.createElement('div');
+    card.className = 'duplicate-group';
+
+    var header = document.createElement('div');
+    header.className = 'duplicate-header';
+
+    var name = document.createElement('strong');
+    name.className = 'duplicate-name';
+    name.textContent = group.name;
+
+    var count = document.createElement('span');
+    count.className = 'duplicate-count';
+    count.textContent = group.count + ' copies';
+
+    header.appendChild(name);
+    header.appendChild(count);
+    card.appendChild(header);
+
+    if (group.tags && group.tags.length > 0) {
+      var tagsDiv = document.createElement('div');
+      tagsDiv.className = 'duplicate-tags';
+      group.tags.forEach(function(tag) {
+        var chip = document.createElement('span');
+        chip.className = 'tag-chip';
+        chip.textContent = tag;
+        tagsDiv.appendChild(chip);
+      });
+      card.appendChild(tagsDiv);
+    } else {
+      var noTags = document.createElement('div');
+      noTags.className = 'duplicate-tags-none';
+      noTags.textContent = 'No tags';
+      card.appendChild(noTags);
+    }
+
+    var locations = document.createElement('div');
+    locations.className = 'duplicate-locations';
+
+    var prefix = document.createElement('span');
+    prefix.textContent = 'Found in: ';
+    locations.appendChild(prefix);
+
+    group.containers.forEach(function(loc, idx) {
+      if (idx > 0) {
+        locations.appendChild(document.createTextNode(', '));
+      }
+      var link = document.createElement('a');
+      link.className = 'duplicate-container-link';
+      link.href = '/?cell=' + encodeURIComponent(loc.label);
+      link.textContent = loc.label;
+      locations.appendChild(link);
+    });
+
+    card.appendChild(locations);
+    return card;
+  }
+
+  if (window.location.hash === '#housekeeping') {
+    loadDuplicates();
   }
 
 })();
