@@ -579,6 +579,84 @@
 
 .tags-actions-disabled { opacity: 0.3; pointer-events: none; }
 
+/* --- Housekeeping: Duplicate Detection --- */
+
+.duplicate-group {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    margin-bottom: var(--space-sm);
+}
+
+.duplicate-group:last-child {
+    margin-bottom: 0;
+}
+
+.duplicate-header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-xs);
+}
+
+.duplicate-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+}
+
+.duplicate-count {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.duplicate-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-sm);
+}
+
+.duplicate-tags-none {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+.duplicate-locations {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.duplicate-container-link {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.duplicate-container-link:hover {
+    text-decoration: underline;
+}
+
+.housekeeping-empty {
+    padding: var(--space-xl) 0;
+    text-align: center;
+}
+
+.housekeeping-empty p:first-child {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.housekeeping-empty .text-muted {
+    margin-top: var(--space-xs);
+}
+
 /* --- Responsive --- */
 
 @media (max-width: 600px) {

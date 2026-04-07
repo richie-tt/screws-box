@@ -32,6 +32,7 @@
         <nav class="settings-nav" aria-label="Settings sections">
             <a href="#shelf" class="settings-nav-item active">Shelf Settings</a>
             <a href="#tags" class="settings-nav-item">Tags</a>
+            <a href="#housekeeping" class="settings-nav-item">Housekeeping</a>
             <a href="#auth" class="settings-nav-item">Authentication</a>
             <a href="#data" class="settings-nav-item">Data</a>
             <a href="#sessions" class="settings-nav-item">Sessions <small class="nav-badge" aria-live="polite">{{.SessionCount}}</small></a>
@@ -90,6 +91,14 @@
                 </table>
             </div>
             <span class="settings-form-feedback" id="tags-feedback" role="status" aria-live="polite"></span>
+        </section>
+
+        <section class="settings-card" id="housekeeping">
+            <h2>Housekeeping</h2>
+            <p class="text-muted">Items that appear in multiple containers with the same name and tags.</p>
+            <div id="housekeeping-content">
+                <p class="text-muted" id="housekeeping-loading">Checking for duplicates...</p>
+            </div>
         </section>
 
         <section class="settings-card" id="auth">
