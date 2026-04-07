@@ -1651,6 +1651,33 @@
     }, 150);
   });
 
+  // 9w. Cell deep-linking (D-12): auto-expand cell from ?cell= parameter
+  (function handleCellDeepLink() {
+    var params = new URLSearchParams(window.location.search);
+    var cellParam = params.get('cell');
+    if (!cellParam) return;
+
+    var targetCell = document.querySelector('.grid-cell[data-coord="' + CSS.escape(cellParam) + '"]');
+    if (targetCell) {
+      targetCell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      expandCell(targetCell);
+
+      // Apply highlight pulse after a short delay to let the panel render
+      setTimeout(function() {
+        targetCell.classList.add('cell-highlight-pulse');
+        targetCell.addEventListener('animationend', function handler() {
+          targetCell.classList.remove('cell-highlight-pulse');
+          targetCell.removeEventListener('animationend', handler);
+        });
+      }, 100);
+    }
+
+    // Clean up URL: remove cell param, preserve other params (q, tags)
+    params.delete('cell');
+    var cleanURL = params.toString() ? '?' + params.toString() : window.location.pathname;
+    history.replaceState(null, '', cleanURL);
+  })();
+
   // 9v. On page load: restore search state from URL (D-14)
   restoreSearchFromURL();
 

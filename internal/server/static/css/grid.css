@@ -946,3 +946,17 @@ mark {
   display: none;
 }
 
+/* ==========================================================================
+   11. Cell Deep-Link Highlight Pulse (D-12)
+   ========================================================================== */
+
+@keyframes cell-highlight-pulse {
+    0% { box-shadow: 0 0 0 0 var(--accent-glow, hsla(210, 55%, 48%, 0.4)); }
+    50% { box-shadow: 0 0 0 6px var(--accent-glow, hsla(210, 55%, 48%, 0.4)); }
+    100% { box-shadow: 0 0 0 0 var(--accent-glow, hsla(210, 55%, 48%, 0.4)); }
+}
+
+.cell-highlight-pulse {
+    animation: cell-highlight-pulse 0.8s ease-out 2;
+}
+
