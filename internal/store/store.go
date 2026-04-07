@@ -1426,7 +1426,7 @@ dup_groups AS (
         COALESCE(tag_fingerprint, '') AS tfp
     FROM item_fp
     GROUP BY norm_name, COALESCE(tag_fingerprint, '')
-    HAVING COUNT(*) >= 2
+    HAVING COUNT(DISTINCT container_id) >= 2
 )
 SELECT
     fp.original_name,

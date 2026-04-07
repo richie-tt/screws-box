@@ -1468,6 +1468,21 @@ func TestFindDuplicatesWhitespace(t *testing.T) {
 	assert.Equal(t, 2, groups[0].Count)
 }
 
+func TestFindDuplicatesSameContainer(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	c1 := getTestContainerID(t, s)
+
+	// Two items with same name in the SAME container should NOT be reported
+	insertTestItem(t, s, c1, "M4 bolt")
+	insertTestItem(t, s, c1, "m4 bolt")
+
+	groups, err := s.FindDuplicates(ctx)
+	require.NoError(t, err)
+	assert.Len(t, groups, 0)
+}
+
 func TestListTagsWithCount(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
