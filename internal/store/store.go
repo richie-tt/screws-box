@@ -1402,6 +1402,98 @@ func (s *Store) GetOIDCUserBySub(ctx context.Context, sub, issuer string) (*mode
 	return &u, nil
 }
 
+// FindDuplicates returns groups of items that share the same normalized name
+// and identical tag set across multiple containers.
+func (s *Store) FindDuplicates(ctx context.Context) ([]model.DuplicateGroup, error) {
+	const query = `
+WITH item_fp AS (
+    SELECT
+        i.id,
+        i.name AS original_name,
+        LOWER(TRIM(i.name)) AS norm_name,
+        i.container_id,
+        (SELECT GROUP_CONCAT(t.name, '|')
+         FROM item_tag it
+         JOIN tag t ON t.id = it.tag_id
+         WHERE it.item_id = i.id
+         ORDER BY t.name
+        ) AS tag_fingerprint
+    FROM item i
+),
+dup_groups AS (
+    SELECT
+        norm_name,
+        COALESCE(tag_fingerprint, '') AS tfp
+    FROM item_fp
+    GROUP BY norm_name, COALESCE(tag_fingerprint, '')
+    HAVING COUNT(*) >= 2
+)
+SELECT
+    fp.original_name,
+    fp.norm_name,
+    fp.container_id,
+    c.col,
+    c.row,
+    COALESCE(fp.tag_fingerprint, '') AS tag_fingerprint
+FROM item_fp fp
+JOIN dup_groups dg ON fp.norm_name = dg.norm_name AND COALESCE(fp.tag_fingerprint, '') = dg.tfp
+JOIN container c ON c.id = fp.container_id
+ORDER BY fp.norm_name, c.col, c.row
+`
+	rows, err := s.conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("find duplicates: %w", err)
+	}
+	defer rows.Close()
+
+	type groupKey struct {
+		normName       string
+		tagFingerprint string
+	}
+	groupMap := make(map[groupKey]*model.DuplicateGroup)
+	var groupOrder []groupKey
+
+	for rows.Next() {
+		var originalName, normName, tagFingerprint string
+		var containerID int64
+		var col, row int
+
+		if err := rows.Scan(&originalName, &normName, &containerID, &col, &row, &tagFingerprint); err != nil {
+			return nil, fmt.Errorf("scan duplicate row: %w", err)
+		}
+
+		key := groupKey{normName: normName, tagFingerprint: tagFingerprint}
+		g, ok := groupMap[key]
+		if !ok {
+			var tags []string
+			if tagFingerprint != "" {
+				tags = strings.Split(tagFingerprint, "|")
+			}
+			g = &model.DuplicateGroup{
+				Name: originalName,
+				Tags: tags,
+			}
+			groupMap[key] = g
+			groupOrder = append(groupOrder, key)
+		}
+
+		g.Containers = append(g.Containers, model.DuplicateLocation{
+			ContainerID: containerID,
+			Label:       model.LabelFor(col, row),
+		})
+		g.Count = len(g.Containers)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate duplicates: %w", err)
+	}
+
+	groups := make([]model.DuplicateGroup, 0, len(groupOrder))
+	for _, key := range groupOrder {
+		groups = append(groups, *groupMap[key])
+	}
+	return groups, nil
+}
+
 // GetOrCreateEncryptionKey returns the 32-byte AES-256 encryption key,
 // generating and persisting one if it doesn't exist yet (per D-16).
 func (s *Store) GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error) {
