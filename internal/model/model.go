@@ -128,6 +128,20 @@ type SearchResponse struct {
 	TotalCount int            `json:"total_count"`
 }
 
+// DuplicateLocation identifies a container holding a duplicate item.
+type DuplicateLocation struct {
+	ContainerID int64  `json:"container_id"`
+	Label       string `json:"label"`
+}
+
+// DuplicateGroup represents items sharing the same name and tag set across multiple containers.
+type DuplicateGroup struct {
+	Name       string              `json:"name"`
+	Tags       []string            `json:"tags"`
+	Count      int                 `json:"count"`
+	Containers []DuplicateLocation `json:"containers"`
+}
+
 // TagResponse is the API-ready representation of a tag.
 type TagResponse struct {
 	ID        int64  `json:"id"`

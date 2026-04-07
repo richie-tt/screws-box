@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"screws-box/internal/model"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1348,6 +1349,123 @@ func linkItemTag(t *testing.T, s *Store, itemID, tagID int64) {
 	t.Helper()
 	_, err := s.conn.Exec("INSERT INTO item_tag (item_id, tag_id) VALUES (?, ?)", itemID, tagID)
 	require.NoError(t, err, "link item %d to tag %d", itemID, tagID)
+}
+
+func TestFindDuplicates(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	c1 := getTestContainerID(t, s)
+	c2 := getSecondContainerID(t, s, c1)
+
+	// Two items with same name (different case), same tags
+	tagID := insertTestTag(t, s, "metric")
+	tagID2 := insertTestTag(t, s, "hex")
+	item1 := insertTestItem(t, s, c1, "M4 Bolt")
+	linkItemTag(t, s, item1, tagID)
+	linkItemTag(t, s, item1, tagID2)
+	item2 := insertTestItem(t, s, c2, "m4 bolt")
+	linkItemTag(t, s, item2, tagID)
+	linkItemTag(t, s, item2, tagID2)
+
+	groups, err := s.FindDuplicates(ctx)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	assert.Equal(t, 2, groups[0].Count)
+	assert.Len(t, groups[0].Containers, 2)
+	assert.Len(t, groups[0].Tags, 2)
+}
+
+func TestFindDuplicatesDifferentTags(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	c1 := getTestContainerID(t, s)
+	c2 := getSecondContainerID(t, s, c1)
+
+	tag1 := insertTestTag(t, s, "metric")
+	tag2 := insertTestTag(t, s, "imperial")
+	item1 := insertTestItem(t, s, c1, "M4 Bolt")
+	linkItemTag(t, s, item1, tag1)
+	item2 := insertTestItem(t, s, c2, "M4 Bolt")
+	linkItemTag(t, s, item2, tag2)
+
+	groups, err := s.FindDuplicates(ctx)
+	require.NoError(t, err)
+	assert.Len(t, groups, 0)
+}
+
+func TestFindDuplicatesTagless(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	c1 := getTestContainerID(t, s)
+	c2 := getSecondContainerID(t, s, c1)
+
+	insertTestItem(t, s, c1, "Plain washer")
+	insertTestItem(t, s, c2, "plain washer")
+
+	groups, err := s.FindDuplicates(ctx)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	assert.Equal(t, 2, groups[0].Count)
+	assert.Len(t, groups[0].Tags, 0)
+}
+
+func TestFindDuplicatesNone(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	c1 := getTestContainerID(t, s)
+
+	insertTestItem(t, s, c1, "Bolt A")
+	insertTestItem(t, s, c1, "Bolt B")
+	insertTestItem(t, s, c1, "Bolt C")
+
+	groups, err := s.FindDuplicates(ctx)
+	require.NoError(t, err)
+	assert.Len(t, groups, 0)
+}
+
+func TestFindDuplicatesSorted(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	c1 := getTestContainerID(t, s)
+	c2 := getSecondContainerID(t, s, c1)
+
+	// Washer duplicates
+	insertTestItem(t, s, c1, "Washer")
+	insertTestItem(t, s, c2, "washer")
+
+	// Bolt duplicates
+	insertTestItem(t, s, c1, "Bolt")
+	insertTestItem(t, s, c2, "bolt")
+
+	groups, err := s.FindDuplicates(ctx)
+	require.NoError(t, err)
+	require.Len(t, groups, 2)
+	// Alphabetical: bolt before washer
+	assert.Equal(t, "bolt", strings.ToLower(groups[0].Name))
+	assert.Equal(t, 2, groups[0].Count)
+	assert.Equal(t, "washer", strings.ToLower(groups[1].Name))
+	assert.Equal(t, 2, groups[1].Count)
+}
+
+func TestFindDuplicatesWhitespace(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	c1 := getTestContainerID(t, s)
+	c2 := getSecondContainerID(t, s, c1)
+
+	insertTestItem(t, s, c1, "M4 bolt ")
+	insertTestItem(t, s, c2, "M4 bolt")
+
+	groups, err := s.FindDuplicates(ctx)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	assert.Equal(t, 2, groups[0].Count)
 }
 
 func TestListTagsWithCount(t *testing.T) {
