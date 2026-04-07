@@ -50,6 +50,7 @@ type StoreService interface {
 	GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error)
 	ExportAllData(ctx context.Context) (*model.ExportData, error)
 	ImportAllData(ctx context.Context, data *model.ExportData) error
+	FindDuplicates(ctx context.Context) ([]model.DuplicateGroup, error)
 }
 
 // --- Healthcheck ---
@@ -1146,5 +1147,19 @@ func (srv *Server) handleUpdateAuthSettings() http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, updated)
+	}
+}
+
+// --- Duplicates ---
+
+func (srv *Server) handleDuplicates() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		groups, err := srv.store.FindDuplicates(r.Context())
+		if err != nil {
+			slog.Error("find duplicates", "err", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, groups)
 	}
 }
