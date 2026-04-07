@@ -5,9 +5,9 @@
 
 /* --- Grid-specific tokens --- */
 :root {
-  --cell-light: hsl(38, 18%, 93%);
-  --cell-dark: hsl(36, 14%, 84%);
-  --cell-empty-opacity: 0.55;
+  --cell-light: hsl(210, 6%, 95%);
+  --cell-dark: hsl(210, 5%, 88%);
+  --cell-empty-opacity: 0.45;
   --grid-gap: 3px;
   --cell-min-width: 5.5rem;
   --cell-min-height: 3.8rem;
@@ -445,14 +445,14 @@ mark {
 .grid-cell:not(.cell-empty)::before {
   content: '';
   position: absolute;
-  left: 0; top: 20%; bottom: 20%;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
+  left: 0; top: 10%; bottom: 10%;
+  width: 4px;
+  border-radius: 0 3px 3px 0;
   background: var(--accent);
-  opacity: 0.45;
+  opacity: 0.85;
   transition: opacity 0.15s;
 }
-.grid-cell:not(.cell-empty):hover::before { opacity: 0.8; }
+.grid-cell:not(.cell-empty):hover::before { opacity: 1; }
 
 .cell-coord {
   font-size: 0.8rem;
@@ -470,27 +470,70 @@ mark {
 }
 
 .grid-cell:not(.cell-empty) .cell-count {
-  color: hsl(210, 30%, 55%);
-  font-weight: 600;
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .cell-empty { opacity: var(--cell-empty-opacity); }
 
-/* Hover lift */
+/* Hover lift — shared base */
 .grid-cell:hover {
-  transform: scale(1.03);
-  box-shadow: var(--shadow-sm);
+  transform: scale(1.02);
   z-index: 1;
 }
+
+/* Light mode hover */
+.grid-cell:hover {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 0 0 1px hsl(210, 55%, 48%, 0.15);
+}
 .grid-cell:not(.cell-empty):hover {
-  box-shadow: 0 2px 12px var(--accent-glow);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 0 0 1.5px hsl(210, 55%, 48%, 0.3);
 }
 
-/* Active (panel open) */
+/* Dark mode hover */
+[data-theme="dark"] .grid-cell:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 1px hsl(210, 55%, 48%, 0.12);
+}
+[data-theme="dark"] .grid-cell:not(.cell-empty):hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 1px hsl(210, 55%, 48%, 0.2);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .grid-cell:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 1px hsl(210, 55%, 48%, 0.12);
+  }
+  :root:not([data-theme]) .grid-cell:not(.cell-empty):hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 1px hsl(210, 55%, 48%, 0.2);
+  }
+}
+
+/* Active (panel open) — shared */
 .grid-cell.cell-active {
-  box-shadow: 0 0 0 2px var(--accent), 0 2px 12px var(--accent-glow);
-  transform: scale(1.04);
+  background-color: var(--accent);
+  color: #fff;
+  transform: scale(1.03);
   z-index: 2;
+}
+.grid-cell.cell-active .cell-coord,
+.grid-cell.cell-active .cell-count {
+  color: #fff;
+}
+.grid-cell.cell-active::before {
+  opacity: 0;
+}
+
+/* Active — light: crisp outline */
+.grid-cell.cell-active {
+  box-shadow: 0 0 0 1.5px hsl(210, 55%, 38%), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* Active — dark: soft ambient */
+[data-theme="dark"] .grid-cell.cell-active {
+  box-shadow: 0 0 0 1px hsl(210, 55%, 55%, 0.4), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .grid-cell.cell-active {
+    box-shadow: 0 0 0 1px hsl(210, 55%, 55%, 0.4), 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
 }
 
 /* Search highlight */
