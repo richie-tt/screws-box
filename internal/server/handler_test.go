@@ -1037,6 +1037,10 @@ func (m *mockStore) ImportAllData(_ context.Context, _ *model.ExportData) error 
 	return fmt.Errorf("not implemented")
 }
 
+func (m *mockStore) FindDuplicates(_ context.Context) ([]model.DuplicateGroup, error) {
+	return nil, nil
+}
+
 func (m *mockStore) RenameTag(ctx context.Context, tagID int64, newName string) error {
 	if m.renameTagFn != nil {
 		return m.renameTagFn(ctx, tagID, newName)
@@ -1728,4 +1732,83 @@ func TestHandleDeleteTagInUse(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 	assert.Contains(t, resp["error"], "in use")
+}
+
+func TestHandleDuplicates_WithDuplicates(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	// Insert two items with same name in different containers (1 and 2), same tags
+	body1 := `{"name":"M4 bolt","container_id":1,"tags":["metric"]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/items", strings.NewReader(body1))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	body2 := `{"name":"m4 bolt","container_id":2,"tags":["metric"]}`
+	req = httptest.NewRequest(http.MethodPost, "/api/items", strings.NewReader(body2))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	// GET /api/duplicates
+	req = httptest.NewRequest(http.MethodGet, "/api/duplicates", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
+
+	// Capture raw body before decoding (Decode consumes the reader)
+	raw := w.Body.String()
+
+	var groups []model.DuplicateGroup
+	require.NoError(t, json.Unmarshal([]byte(raw), &groups))
+	require.Len(t, groups, 1)
+	assert.Equal(t, 2, groups[0].Count)
+	assert.Len(t, groups[0].Containers, 2)
+	assert.Len(t, groups[0].Tags, 1)
+	assert.Equal(t, "metric", groups[0].Tags[0])
+
+	// Verify JSON uses "label" field name
+	assert.Contains(t, raw, `"label"`)
+	assert.NotContains(t, raw, `"container_label"`)
+}
+
+func TestHandleDuplicates_Empty(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/duplicates", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var groups []model.DuplicateGroup
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&groups))
+	assert.Len(t, groups, 0)
+}
+
+func TestHandleDuplicates_StoreError(t *testing.T) {
+	// For a store error test, we close the store to force an error
+	s := &store.Store{}
+	tmpFile := filepath.Join(t.TempDir(), "test.db")
+	require.NoError(t, s.Open(tmpFile))
+
+	memStore := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
+	t.Cleanup(func() { memStore.Close() })
+	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
+
+	srv := NewServer(s, mgr)
+	router := srv.Router()
+
+	// Close store to force error
+	s.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/duplicates", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
