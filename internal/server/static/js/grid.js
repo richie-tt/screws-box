@@ -335,14 +335,14 @@
           replaceBtn.textContent = 'Replace photo';
           replaceBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            triggerPhotoUpload(item.id);
+            showPhotoPicker(item.id, item.photo.id);
           });
           photoActions.appendChild(replaceBtn);
 
           var removeBtn = document.createElement('button');
           removeBtn.type = 'button';
           removeBtn.className = 'btn-remove';
-          removeBtn.textContent = 'Remove photo';
+          removeBtn.textContent = 'Unlink photo';
           removeBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             removeItemPhoto(item.id, item.photo.uuid);
@@ -352,7 +352,11 @@
           photoWrap.appendChild(photoActions);
           li.appendChild(photoWrap);
         } else {
-          // No photo: show upload button
+          // No photo: show button pair (Upload + Link existing)
+          var btnContainer = document.createElement('div');
+          btnContainer.className = 'item-photo-buttons';
+
+          // Upload photo button
           var uploadBtn = document.createElement('button');
           uploadBtn.type = 'button';
           uploadBtn.className = 'btn-upload-photo';
@@ -373,12 +377,37 @@
           svgEl.appendChild(svgCircle);
           uploadBtn.appendChild(svgEl);
           uploadBtn.appendChild(document.createTextNode(' Upload photo'));
-
           uploadBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             triggerPhotoUpload(item.id);
           });
-          li.appendChild(uploadBtn);
+          btnContainer.appendChild(uploadBtn);
+
+          // Link existing button
+          var linkBtn = document.createElement('button');
+          linkBtn.type = 'button';
+          linkBtn.className = 'btn-link-photo';
+          var linkSvgNS = 'http://www.w3.org/2000/svg';
+          var linkSvg = document.createElementNS(linkSvgNS, 'svg');
+          linkSvg.setAttribute('viewBox', '0 0 24 24');
+          linkSvg.setAttribute('fill', 'none');
+          linkSvg.setAttribute('stroke', 'currentColor');
+          linkSvg.setAttribute('stroke-width', '2');
+          var linkPath1 = document.createElementNS(linkSvgNS, 'path');
+          linkPath1.setAttribute('d', 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71');
+          linkSvg.appendChild(linkPath1);
+          var linkPath2 = document.createElementNS(linkSvgNS, 'path');
+          linkPath2.setAttribute('d', 'M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71');
+          linkSvg.appendChild(linkPath2);
+          linkBtn.appendChild(linkSvg);
+          linkBtn.appendChild(document.createTextNode(' Link existing'));
+          linkBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            showPhotoPicker(item.id, null);
+          });
+          btnContainer.appendChild(linkBtn);
+
+          li.appendChild(btnContainer);
         }
       }
 
@@ -1122,12 +1151,151 @@
 
   function removeItemPhoto(itemId, photoUUID) {
     var xhr = new XMLHttpRequest();
-    xhr.open('DELETE', '/api/photos/' + photoUUID + '/item');
+    xhr.open('DELETE', '/api/items/' + itemId + '/photo');
     xhr.setRequestHeader('X-CSRF-Token', getCSRFToken());
     xhr.addEventListener('load', function() {
       refreshCurrentPanel();
     });
     xhr.send();
+  }
+
+  function showPhotoPicker(itemId, currentPhotoId) {
+    // Create overlay
+    var overlay = document.createElement('div');
+    overlay.className = 'photo-picker-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Select a photo');
+
+    // Create panel
+    var panel = document.createElement('div');
+    panel.className = 'photo-picker-panel';
+
+    // Header
+    var header = document.createElement('div');
+    header.className = 'photo-picker-header';
+    var title = document.createElement('h3');
+    title.textContent = 'Select a photo';
+    header.appendChild(title);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'photo-picker-close';
+    closeBtn.setAttribute('aria-label', 'Close photo picker');
+    closeBtn.textContent = '\u00D7';
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    // Grid container (populated after fetch)
+    var grid = document.createElement('div');
+    grid.className = 'photo-picker-grid';
+    grid.textContent = 'Loading...';
+    panel.appendChild(grid);
+
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    // Close handlers
+    function closePicker() {
+      overlay.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+    function escHandler(e) {
+      if (e.key === 'Escape') closePicker();
+    }
+    closeBtn.addEventListener('click', closePicker);
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closePicker();
+    });
+    document.addEventListener('keydown', escHandler);
+
+    // Fetch photos
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/photos');
+    xhr.setRequestHeader('X-CSRF-Token', getCSRFToken());
+    xhr.addEventListener('load', function() {
+      if (xhr.status !== 200) {
+        grid.textContent = 'Could not load photos. Close and try again.';
+        return;
+      }
+      var photos = JSON.parse(xhr.responseText);
+      grid.textContent = ''; // Clear loading
+
+      if (!photos || photos.length === 0) {
+        var emptyDiv = document.createElement('div');
+        emptyDiv.className = 'photo-picker-empty';
+        var emptyH = document.createElement('p');
+        emptyH.textContent = 'No photos yet';
+        emptyDiv.appendChild(emptyH);
+        var emptyP = document.createElement('p');
+        emptyP.textContent = 'Upload a photo first using the Upload button on any item.';
+        emptyDiv.appendChild(emptyP);
+        grid.appendChild(emptyDiv);
+        return;
+      }
+
+      photos.forEach(function(photo) {
+        var card = document.createElement('div');
+        card.className = 'photo-picker-card';
+        card.setAttribute('role', 'button');
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('aria-label', photo.original_filename || 'Photo');
+
+        // Disable if this is the current item's photo
+        var isCurrentPhoto = (currentPhotoId !== null && photo.id === currentPhotoId);
+        if (isCurrentPhoto) {
+          card.classList.add('disabled');
+          card.setAttribute('aria-disabled', 'true');
+          card.setAttribute('tabindex', '-1');
+        }
+
+        var img = document.createElement('img');
+        img.setAttribute('src', photo.thumb_url);
+        img.setAttribute('alt', photo.original_filename || 'Photo');
+        card.appendChild(img);
+
+        // Linked-item badge
+        if (photo.linked_items && photo.linked_items.length > 0) {
+          var badge = document.createElement('div');
+          badge.className = 'photo-picker-badge';
+          if (photo.linked_items.length === 1) {
+            badge.textContent = photo.linked_items[0].name;
+          } else {
+            badge.textContent = photo.linked_items.length + ' items';
+          }
+          card.appendChild(badge);
+        }
+
+        // Click to select (unless disabled)
+        if (!isCurrentPhoto) {
+          card.addEventListener('click', function() {
+            linkPhotoToItem(itemId, photo.id, closePicker);
+          });
+          card.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              linkPhotoToItem(itemId, photo.id, closePicker);
+            }
+          });
+        }
+
+        grid.appendChild(card);
+      });
+    });
+    xhr.addEventListener('error', function() {
+      grid.textContent = 'Could not load photos. Close and try again.';
+    });
+    xhr.send();
+  }
+
+  function linkPhotoToItem(itemId, photoId, callback) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/items/' + itemId + '/photo');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('X-CSRF-Token', getCSRFToken());
+    xhr.addEventListener('load', function() {
+      if (callback) callback();
+      refreshCurrentPanel();
+    });
+    xhr.send(JSON.stringify({ photo_id: photoId }));
   }
 
   function refreshCurrentPanel() {
