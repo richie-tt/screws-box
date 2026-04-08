@@ -960,3 +960,296 @@ mark {
     animation: cell-highlight-pulse 0.8s ease-out 2;
 }
 
+/* ==========================================================================
+   12. Item Photo Thumbnail
+   ========================================================================== */
+
+.item-photo {
+  margin-top: var(--space-sm);
+  width: 100%;
+  max-height: 200px;
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  overflow: hidden;
+  cursor: pointer;
+}
+.item-photo img {
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+  display: block;
+}
+
+/* ==========================================================================
+   13. Thumbnail Action Buttons Overlay
+   ========================================================================== */
+
+.item-photo-wrap {
+  position: relative;
+}
+.item-photo-actions {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.item-photo-wrap:hover .item-photo-actions {
+  opacity: 1;
+}
+.item-photo-actions button {
+  flex: 1;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--space-xs) var(--space-sm);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-replace {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.btn-remove {
+  background: var(--bg-raised);
+  color: var(--danger);
+}
+
+/* ==========================================================================
+   14. Upload Photo Button
+   ========================================================================== */
+
+.btn-upload-photo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  width: 100%;
+  height: 32px;
+  margin-top: var(--space-sm);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-upload-photo:hover {
+  opacity: 0.9;
+}
+.btn-upload-photo svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ==========================================================================
+   15. Drag-and-Drop Overlay
+   ========================================================================== */
+
+.photo-drop-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(var(--accent-rgb, 66, 133, 196), 0.1);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.photo-drop-overlay.drag-active {
+  display: flex;
+}
+.photo-drop-overlay span {
+  font-size: 15px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.photo-drop-overlay small {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   16. Upload Progress Indicator
+   ========================================================================== */
+
+.upload-progress {
+  margin-top: var(--space-sm);
+  width: 100%;
+}
+.upload-progress progress {
+  width: 100%;
+  height: 4px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.upload-progress progress::-webkit-progress-bar {
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+}
+.upload-progress progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  transition: width 200ms ease;
+}
+.upload-progress progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+}
+.upload-progress-filename {
+  font-size: 13px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.upload-progress.error progress::-webkit-progress-value {
+  background: var(--danger);
+}
+.upload-progress.error .upload-progress-filename {
+  color: var(--danger);
+}
+.upload-progress.success .upload-progress-filename {
+  color: var(--success);
+}
+
+/* ==========================================================================
+   17. Lightbox Overlay
+   ========================================================================== */
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  animation: lightbox-in 200ms ease;
+}
+@keyframes lightbox-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.lightbox-overlay img {
+  max-width: 90vw;
+  max-height: 85vh;
+  object-fit: contain;
+}
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  opacity: 0.7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lightbox-close:hover {
+  opacity: 1;
+}
+.lightbox-info {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  font-family: var(--font-body);
+  margin-top: 8px;
+}
+
+/* ==========================================================================
+   18. Images Page
+   ========================================================================== */
+
+.images-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-lg);
+}
+.images-upload-area {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  text-align: center;
+  margin-bottom: var(--space-lg);
+  transition: border-color 150ms ease;
+}
+.images-upload-area.drag-active {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb, 66, 133, 196), 0.05);
+}
+.images-upload-area .upload-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.images-upload-area .upload-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: var(--space-xs);
+}
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-md);
+}
+.images-card {
+  background: var(--bg-raised);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  padding: var(--space-sm);
+  cursor: pointer;
+}
+.images-card img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+.images-card-info {
+  padding-top: var(--space-xs);
+}
+.images-card-filename {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.images-card-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.images-empty {
+  text-align: center;
+  padding: var(--space-xl);
+  color: var(--text-muted);
+}
+.images-empty h3 {
+  margin-bottom: var(--space-sm);
+}
+.images-upload-list {
+  margin-bottom: var(--space-lg);
+}
