@@ -887,18 +887,18 @@ type mockStore struct {
 	listTagsFn             func(ctx context.Context, prefix string) ([]model.TagResponse, error)
 	resizeShelfFn          func(ctx context.Context, newRows, newCols int) (*model.ResizeResult, error)
 	updateShelfNameFn      func(ctx context.Context, name string) error
-	getAuthSettingsFn        func(ctx context.Context) (*model.AuthSettings, error)
-	updateAuthSettingsFn     func(ctx context.Context, settings *model.AuthSettings) error
-	validateCredentialsFn    func(ctx context.Context, username, password string) (bool, error)
-	getOIDCConfigFn          func(ctx context.Context) (*model.OIDCConfig, error)
-	getOIDCConfigMaskedFn    func(ctx context.Context) (*model.OIDCConfig, error)
-	saveOIDCConfigFn         func(ctx context.Context, cfg *model.OIDCConfig) error
-	upsertOIDCUserFn         func(ctx context.Context, user *model.OIDCUser) (*model.OIDCUser, error)
-	getOIDCUserBySubFn       func(ctx context.Context, sub, issuer string) (*model.OIDCUser, error)
-	getOrCreateEncKeyFn      func(ctx context.Context) ([]byte, error)
-	renameTagFn              func(ctx context.Context, tagID int64, newName string) error
-	mergeTagsFn              func(ctx context.Context, sourceID, targetID int64) error
-	deleteUnusedTagFn        func(ctx context.Context, tagID int64) error
+	getAuthSettingsFn      func(ctx context.Context) (*model.AuthSettings, error)
+	updateAuthSettingsFn   func(ctx context.Context, settings *model.AuthSettings) error
+	validateCredentialsFn  func(ctx context.Context, username, password string) (bool, error)
+	getOIDCConfigFn        func(ctx context.Context) (*model.OIDCConfig, error)
+	getOIDCConfigMaskedFn  func(ctx context.Context) (*model.OIDCConfig, error)
+	saveOIDCConfigFn       func(ctx context.Context, cfg *model.OIDCConfig) error
+	upsertOIDCUserFn       func(ctx context.Context, user *model.OIDCUser) (*model.OIDCUser, error)
+	getOIDCUserBySubFn     func(ctx context.Context, sub, issuer string) (*model.OIDCUser, error)
+	getOrCreateEncKeyFn    func(ctx context.Context) ([]byte, error)
+	renameTagFn            func(ctx context.Context, tagID int64, newName string) error
+	mergeTagsFn            func(ctx context.Context, sourceID, targetID int64) error
+	deleteUnusedTagFn      func(ctx context.Context, tagID int64) error
 }
 
 func (m *mockStore) Ping(ctx context.Context) error {

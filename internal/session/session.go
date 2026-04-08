@@ -6,7 +6,7 @@ import "time"
 type Session struct {
 	ID           string    `json:"id"`
 	Username     string    `json:"username"`
-	AuthMethod   string    `json:"auth_method"`   // "local" or "oidc"
+	AuthMethod   string    `json:"auth_method"` // "local" or "oidc"
 	DisplayName  string    `json:"display_name"`
 	CSRFToken    string    `json:"csrf_token"`
 	CreatedAt    time.Time `json:"created_at"`

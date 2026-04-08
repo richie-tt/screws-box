@@ -64,4 +64,3 @@ func ClearStateCookieHTTP(secure bool) *http.Cookie {
 		SameSite: http.SameSiteLaxMode,
 	}
 }
-

@@ -872,13 +872,13 @@ func (s *Store) SearchItemsBatch(ctx context.Context, query string, tags []strin
 	var results []model.SearchResult
 	for rows.Next() {
 		var (
-			id                         int64
-			containerID                int64
-			name                       string
-			description                sql.NullString
-			col, row                   int
-			createdAt, updatedAt       time.Time
-			tagList                    sql.NullString
+			id                   int64
+			containerID          int64
+			name                 string
+			description          sql.NullString
+			col, row             int
+			createdAt, updatedAt time.Time
+			tagList              sql.NullString
 		)
 		if err := rows.Scan(&id, &containerID, &name, &description, &col, &row, &createdAt, &updatedAt, &tagList); err != nil {
 			return nil, fmt.Errorf("scan search batch result: %w", err)
