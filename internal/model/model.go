@@ -55,7 +55,6 @@ type GridData struct {
 	AuthUser        string
 	AuthHasPassword bool
 	DisplayName     string
-	PhotosEnabled   bool
 }
 
 // AuthSettings holds authentication configuration.
@@ -105,33 +104,6 @@ type Cell struct {
 	ContainerID int64
 }
 
-// Photo represents a photo stored in the photo storage backend.
-// The item-photo relationship is stored in the item_photo junction table, not on this struct.
-type Photo struct {
-	ID               int64  `json:"id"`
-	UUID             string `json:"uuid"`
-	OriginalFilename string `json:"original_filename"`
-	ContentType      string `json:"content_type"`
-	Ext              string `json:"ext"`
-	FileSize         int64  `json:"file_size"`
-	CropMode         string `json:"crop_mode"`
-	UploadedAt       string `json:"uploaded_at"`
-	ThumbURL         string `json:"thumb_url,omitempty"`
-	FullURL          string `json:"full_url,omitempty"`
-}
-
-// PhotoWithLinks extends Photo with linked item information for the photo picker.
-type PhotoWithLinks struct {
-	Photo
-	LinkedItems []ItemLinkInfo `json:"linked_items,omitempty"`
-}
-
-// ItemLinkInfo identifies an item linked to a photo.
-type ItemLinkInfo struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-}
-
 // ItemResponse is the API-ready representation of an item.
 type ItemResponse struct {
 	ID             int64    `json:"id"`
@@ -140,7 +112,6 @@ type ItemResponse struct {
 	Name           string   `json:"name"`
 	Description    *string  `json:"description"`
 	Tags           []string `json:"tags"`
-	Photo          *Photo   `json:"photo,omitempty"`
 	CreatedAt      string   `json:"created_at"`
 	UpdatedAt      string   `json:"updated_at"`
 }

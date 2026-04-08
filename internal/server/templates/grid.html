@@ -8,7 +8,6 @@
 {{end}}
 
 {{define "header_actions"}}
-{{if .PhotosEnabled}}<a href="/images" class="ghost" title="Images">Images</a>{{end}}
 <a href="/settings" class="ghost" title="Settings">Settings</a>
 {{if .DisplayName}}<span class="header-user">{{.DisplayName}}</span>{{end}}
 {{if .AuthEnabled}}
@@ -60,7 +59,7 @@
     </div>
   </aside>
   <div class="grid-wrapper">
-    <div class="grid-container" style="--grid-cols: {{.Cols}}" data-photos-enabled="{{.PhotosEnabled}}">
+    <div class="grid-container" style="--grid-cols: {{.Cols}}">
       <!-- Corner cell -->
       <div class="grid-header grid-corner"></div>
       <!-- Column headers -->

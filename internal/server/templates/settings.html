@@ -31,7 +31,6 @@
     <aside class="settings-sidebar">
         <nav class="settings-nav" aria-label="Settings sections">
             <a href="#shelf" class="settings-nav-item active">Shelf Settings</a>
-            <a href="#settings-photos" class="settings-nav-item">Photos</a>
             <a href="#tags" class="settings-nav-item">Tags</a>
             <a href="#housekeeping" class="settings-nav-item">Housekeeping</a>
             <a href="#auth" class="settings-nav-item">Authentication</a>
@@ -68,29 +67,6 @@
                     <span class="settings-form-feedback" role="status" aria-live="polite"></span>
                 </div>
             </form>
-        </section>
-
-        <section class="settings-card" id="settings-photos">
-            <h2>Photos</h2>
-            <div class="form-group">
-                <label class="toggle-label" for="photos-enabled-toggle">
-                    <input type="checkbox" id="photos-enabled-toggle" {{if .PhotosEnabled}}checked{{end}}>
-                    <span class="toggle-switch"></span>
-                    Photos enabled
-                </label>
-            </div>
-            <hr class="settings-divider">
-            <div class="form-group">
-                <label for="thumbnail-size">Thumbnail size (px)</label>
-                <input type="number" id="thumbnail-size" value="{{.ThumbnailSize}}" min="100" max="400" style="width:120px">
-            </div>
-            <div class="settings-form-actions">
-                <button type="button" class="btn secondary" id="save-thumbnail-size">Save</button>
-            </div>
-            <hr class="settings-divider">
-            <div class="settings-form-actions">
-                <button type="button" class="btn secondary" id="regenerate-thumbnails">Regenerate thumbnails</button>
-            </div>
         </section>
 
         <section class="settings-card" id="tags">
@@ -327,55 +303,6 @@
         </div>
     </div>
 </div>
-
-<script>
-(function() {
-    'use strict';
-    function getCSRFToken() {
-        var match = document.cookie.match(/(?:^|; )screwsbox_csrf=([^;]*)/);
-        return match ? match[1] : '';
-    }
-    var toggle = document.getElementById('photos-enabled-toggle');
-    if (toggle) {
-        toggle.addEventListener('change', function() {
-            fetch('/api/shelf/photos-enabled', {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken()},
-                body: JSON.stringify({enabled: toggle.checked})
-            });
-        });
-    }
-    var saveBtn = document.getElementById('save-thumbnail-size');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', function() {
-            var size = parseInt(document.getElementById('thumbnail-size').value, 10);
-            if (isNaN(size) || size < 100 || size > 400) return;
-            fetch('/api/shelf/thumbnail-size', {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken()},
-                body: JSON.stringify({size: size})
-            });
-        });
-    }
-    var regenBtn = document.getElementById('regenerate-thumbnails');
-    if (regenBtn) {
-        regenBtn.addEventListener('click', function() {
-            regenBtn.disabled = true;
-            regenBtn.textContent = 'Regenerating...';
-            fetch('/api/photos/regenerate', {
-                method: 'POST',
-                headers: {'X-CSRF-Token': getCSRFToken()}
-            }).then(function(r) { return r.json(); }).then(function(data) {
-                regenBtn.textContent = 'Regenerated ' + data.regenerated + ' thumbnails';
-                setTimeout(function() { regenBtn.textContent = 'Regenerate thumbnails'; regenBtn.disabled = false; }, 3000);
-            }).catch(function() {
-                regenBtn.textContent = 'Regenerate thumbnails';
-                regenBtn.disabled = false;
-            });
-        });
-    }
-})();
-</script>
 
 <div class="resize-modal-overlay" id="revoke-modal-overlay">
     <div class="resize-modal-dialog" role="dialog" aria-labelledby="revoke-modal-title">

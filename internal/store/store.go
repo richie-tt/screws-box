@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"screws-box/internal/model"
-	"strconv"
 	"strings"
 	"time"
 
@@ -96,23 +95,6 @@ var schemaDDL = []string{
 		updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
 		UNIQUE(sub, issuer)
 	)`,
-	`CREATE TABLE IF NOT EXISTS photo (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		uuid TEXT NOT NULL UNIQUE,
-		original_filename TEXT NOT NULL DEFAULT '',
-		content_type TEXT NOT NULL,
-		ext TEXT NOT NULL,
-		file_size INTEGER NOT NULL DEFAULT 0,
-		crop_mode TEXT NOT NULL DEFAULT 'fit',
-		uploaded_at DATETIME NOT NULL DEFAULT (datetime('now'))
-	)`,
-	`CREATE INDEX IF NOT EXISTS idx_photo_uuid ON photo(uuid)`,
-	`CREATE TABLE IF NOT EXISTS item_photo (
-		item_id  INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
-		photo_id INTEGER NOT NULL REFERENCES photo(id) ON DELETE CASCADE,
-		PRIMARY KEY (item_id, photo_id)
-	)`,
-	`CREATE INDEX IF NOT EXISTS idx_item_photo_photo_id ON item_photo(photo_id)`,
 }
 
 // migrations runs ALTER TABLE statements for columns added after the initial schema.
@@ -128,12 +110,6 @@ var migrations = []string{
 	`ALTER TABLE shelf ADD COLUMN oidc_client_secret TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE shelf ADD COLUMN oidc_display_name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE shelf ADD COLUMN encryption_key TEXT NOT NULL DEFAULT ''`,
-	// Photo feature columns
-	`ALTER TABLE shelf ADD COLUMN photos_enabled INTEGER NOT NULL DEFAULT 0`,
-	`ALTER TABLE shelf ADD COLUMN thumbnail_size INTEGER NOT NULL DEFAULT 200`,
-	// Photo table columns (for databases with an older photo schema)
-	`ALTER TABLE photo ADD COLUMN ext TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE photo ADD COLUMN crop_mode TEXT NOT NULL DEFAULT 'fit'`,
 }
 
 // deferRollback is used with defer to rollback a transaction.
@@ -209,11 +185,6 @@ func (s *Store) Open(dbPath string) error {
 		return fmt.Errorf("create schema: %w", err)
 	}
 
-	if err := s.migratePhotoToJunction(context.Background()); err != nil {
-		db.Close()
-		return fmt.Errorf("migrate photo junction: %w", err)
-	}
-
 	if err := s.seedDefaultShelf(); err != nil {
 		db.Close()
 		return fmt.Errorf("seed default shelf: %w", err)
@@ -251,7 +222,6 @@ func (s *Store) createSchema() error {
 	for _, m := range migrations {
 		_, _ = s.conn.Exec(m) // ignore "duplicate column" errors
 	}
-
 	return nil
 }
 
@@ -662,12 +632,6 @@ func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*m
 			return nil, fmt.Errorf("get item %d: %w", itemID, err)
 		}
 		if item != nil {
-			// Attach photo if one exists for this item
-			photo, err := s.GetPhotoByItemID(ctx, item.ID)
-			if err != nil {
-				return nil, fmt.Errorf("get photo for item %d: %w", item.ID, err)
-			}
-			item.Photo = photo
 			items = append(items, *item)
 		}
 	}
@@ -1553,361 +1517,4 @@ func (s *Store) GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("store encryption key: %w", err)
 	}
 	return key, nil
-}
-
-// --- Photo CRUD ---
-
-// InsertPhoto inserts a new photo record and sets p.ID from the result.
-func (s *Store) InsertPhoto(ctx context.Context, p *model.Photo) error {
-	res, err := s.conn.ExecContext(ctx,
-		`INSERT INTO photo (uuid, original_filename, content_type, ext, file_size, crop_mode)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		p.UUID, p.OriginalFilename, p.ContentType, p.Ext, p.FileSize, p.CropMode)
-	if err != nil {
-		return fmt.Errorf("insert photo: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("photo last insert id: %w", err)
-	}
-	p.ID = id
-	return nil
-}
-
-// GetPhotoByUUID retrieves a photo by its UUID. Returns nil, nil if not found.
-func (s *Store) GetPhotoByUUID(ctx context.Context, uuid string) (*model.Photo, error) {
-	var p model.Photo
-	err := s.conn.QueryRowContext(ctx,
-		`SELECT id, uuid, original_filename, content_type, ext, file_size, crop_mode, uploaded_at
-		 FROM photo WHERE uuid = ?`, uuid).
-		Scan(&p.ID, &p.UUID, &p.OriginalFilename, &p.ContentType, &p.Ext, &p.FileSize, &p.CropMode, &p.UploadedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get photo by uuid: %w", err)
-	}
-	p.ThumbURL = "/api/photos/" + p.UUID + "/thumb"
-	p.FullURL = "/api/photos/" + p.UUID + "/full"
-	return &p, nil
-}
-
-// GetPhotoByItemID retrieves the photo for an item via the junction table. Returns nil, nil if no photo exists.
-func (s *Store) GetPhotoByItemID(ctx context.Context, itemID int64) (*model.Photo, error) {
-	var p model.Photo
-	err := s.conn.QueryRowContext(ctx,
-		`SELECT p.id, p.uuid, p.original_filename, p.content_type, p.ext, p.file_size, p.crop_mode, p.uploaded_at
-		 FROM photo p
-		 JOIN item_photo ip ON p.id = ip.photo_id
-		 WHERE ip.item_id = ?`, itemID).
-		Scan(&p.ID, &p.UUID, &p.OriginalFilename, &p.ContentType, &p.Ext, &p.FileSize, &p.CropMode, &p.UploadedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get photo by item_id: %w", err)
-	}
-	p.ThumbURL = "/api/photos/" + p.UUID + "/thumb"
-	p.FullURL = "/api/photos/" + p.UUID + "/full"
-	return &p, nil
-}
-
-// DeletePhoto removes a photo record by UUID.
-func (s *Store) DeletePhoto(ctx context.Context, uuid string) error {
-	_, err := s.conn.ExecContext(ctx, "DELETE FROM photo WHERE uuid = ?", uuid)
-	if err != nil {
-		return fmt.Errorf("delete photo: %w", err)
-	}
-	return nil
-}
-
-// ListAllPhotos returns all photo records.
-func (s *Store) ListAllPhotos(ctx context.Context) ([]model.Photo, error) {
-	rows, err := s.conn.QueryContext(ctx,
-		`SELECT id, uuid, original_filename, content_type, ext, file_size, crop_mode, uploaded_at
-		 FROM photo ORDER BY uploaded_at DESC`)
-	if err != nil {
-		return nil, fmt.Errorf("list photos: %w", err)
-	}
-	defer rows.Close()
-
-	var photos []model.Photo
-	for rows.Next() {
-		var p model.Photo
-		if err := rows.Scan(&p.ID, &p.UUID, &p.OriginalFilename, &p.ContentType, &p.Ext, &p.FileSize, &p.CropMode, &p.UploadedAt); err != nil {
-			return nil, fmt.Errorf("scan photo: %w", err)
-		}
-		p.ThumbURL = "/api/photos/" + p.UUID + "/thumb"
-		p.FullURL = "/api/photos/" + p.UUID + "/full"
-		photos = append(photos, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate photos: %w", err)
-	}
-	return photos, nil
-}
-
-// IsPhotosEnabled returns whether the photo feature is enabled.
-func (s *Store) IsPhotosEnabled(ctx context.Context) (bool, error) {
-	var enabled int
-	err := s.conn.QueryRowContext(ctx, "SELECT photos_enabled FROM shelf LIMIT 1").Scan(&enabled)
-	if err != nil {
-		return false, fmt.Errorf("get photos_enabled: %w", err)
-	}
-	return enabled != 0, nil
-}
-
-// SetPhotosEnabled toggles the photo feature on or off.
-func (s *Store) SetPhotosEnabled(ctx context.Context, enabled bool) error {
-	val := 0
-	if enabled {
-		val = 1
-	}
-	_, err := s.conn.ExecContext(ctx,
-		"UPDATE shelf SET photos_enabled = ? WHERE id = (SELECT id FROM shelf LIMIT 1)", val)
-	if err != nil {
-		return fmt.Errorf("set photos_enabled: %w", err)
-	}
-	return nil
-}
-
-// GetThumbnailSize returns the configured thumbnail size in pixels.
-func (s *Store) GetThumbnailSize(ctx context.Context) (int, error) {
-	var size int
-	err := s.conn.QueryRowContext(ctx, "SELECT thumbnail_size FROM shelf LIMIT 1").Scan(&size)
-	if err != nil {
-		return 0, fmt.Errorf("get thumbnail_size: %w", err)
-	}
-	return size, nil
-}
-
-// SetThumbnailSize updates the configured thumbnail size in pixels.
-func (s *Store) SetThumbnailSize(ctx context.Context, size int) error {
-	_, err := s.conn.ExecContext(ctx,
-		"UPDATE shelf SET thumbnail_size = ? WHERE id = (SELECT id FROM shelf LIMIT 1)", size)
-	if err != nil {
-		return fmt.Errorf("set thumbnail_size: %w", err)
-	}
-	return nil
-}
-
-// UpdatePhotoCropMode changes the crop_mode on a photo record.
-func (s *Store) UpdatePhotoCropMode(ctx context.Context, uuid, mode string) error {
-	_, err := s.conn.ExecContext(ctx, "UPDATE photo SET crop_mode = ? WHERE uuid = ?", mode, uuid)
-	if err != nil {
-		return fmt.Errorf("update photo crop_mode: %w", err)
-	}
-	return nil
-}
-
-// UnlinkPhoto removes all item links for a photo by UUID via the junction table.
-func (s *Store) UnlinkPhoto(ctx context.Context, uuid string) error {
-	_, err := s.conn.ExecContext(ctx,
-		`DELETE FROM item_photo WHERE photo_id = (SELECT id FROM photo WHERE uuid = ?)`, uuid)
-	if err != nil {
-		return fmt.Errorf("unlink photo: %w", err)
-	}
-	return nil
-}
-
-// LinkPhotoToItem creates a link between an item and a photo in the junction table.
-// Uses INSERT OR REPLACE to handle re-linking.
-func (s *Store) LinkPhotoToItem(ctx context.Context, itemID, photoID int64) error {
-	_, err := s.conn.ExecContext(ctx,
-		`INSERT OR REPLACE INTO item_photo (item_id, photo_id) VALUES (?, ?)`, itemID, photoID)
-	if err != nil {
-		return fmt.Errorf("link photo to item: %w", err)
-	}
-	return nil
-}
-
-// UnlinkPhotoFromItem removes the photo link for a specific item.
-func (s *Store) UnlinkPhotoFromItem(ctx context.Context, itemID int64) error {
-	_, err := s.conn.ExecContext(ctx,
-		`DELETE FROM item_photo WHERE item_id = ?`, itemID)
-	if err != nil {
-		return fmt.Errorf("unlink photo from item: %w", err)
-	}
-	return nil
-}
-
-// GetItemsByPhotoID returns all items linked to a photo.
-func (s *Store) GetItemsByPhotoID(ctx context.Context, photoID int64) ([]model.ItemLinkInfo, error) {
-	rows, err := s.conn.QueryContext(ctx,
-		`SELECT i.id, i.name FROM item i JOIN item_photo ip ON i.id = ip.item_id WHERE ip.photo_id = ?`, photoID)
-	if err != nil {
-		return nil, fmt.Errorf("get items by photo_id: %w", err)
-	}
-	defer rows.Close()
-
-	var items []model.ItemLinkInfo
-	for rows.Next() {
-		var item model.ItemLinkInfo
-		if err := rows.Scan(&item.ID, &item.Name); err != nil {
-			return nil, fmt.Errorf("scan item link: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate item links: %w", err)
-	}
-	return items, nil
-}
-
-// CountItemsByPhotoID returns the number of items linked to a photo.
-func (s *Store) CountItemsByPhotoID(ctx context.Context, photoID int64) (int, error) {
-	var count int
-	err := s.conn.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM item_photo WHERE photo_id = ?`, photoID).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("count items by photo_id: %w", err)
-	}
-	return count, nil
-}
-
-// ListAllPhotosWithLinks returns all photos with their linked item info for the picker.
-func (s *Store) ListAllPhotosWithLinks(ctx context.Context) ([]model.PhotoWithLinks, error) {
-	rows, err := s.conn.QueryContext(ctx,
-		`SELECT p.id, p.uuid, p.original_filename, p.content_type, p.ext, p.file_size, p.crop_mode, p.uploaded_at,
-		        COALESCE(GROUP_CONCAT(i.id || ':' || i.name, '|'), '') as linked_items
-		 FROM photo p
-		 LEFT JOIN item_photo ip ON p.id = ip.photo_id
-		 LEFT JOIN item i ON ip.item_id = i.id
-		 GROUP BY p.id
-		 ORDER BY p.uploaded_at DESC`)
-	if err != nil {
-		return nil, fmt.Errorf("list photos with links: %w", err)
-	}
-	defer rows.Close()
-
-	var photos []model.PhotoWithLinks
-	for rows.Next() {
-		var pw model.PhotoWithLinks
-		var linkedStr string
-		if err := rows.Scan(&pw.ID, &pw.UUID, &pw.OriginalFilename, &pw.ContentType, &pw.Ext, &pw.FileSize, &pw.CropMode, &pw.UploadedAt, &linkedStr); err != nil {
-			return nil, fmt.Errorf("scan photo with links: %w", err)
-		}
-		pw.ThumbURL = "/api/photos/" + pw.UUID + "/thumb"
-		pw.FullURL = "/api/photos/" + pw.UUID + "/full"
-		if linkedStr != "" {
-			for _, pair := range strings.Split(linkedStr, "|") {
-				parts := strings.SplitN(pair, ":", 2)
-				if len(parts) == 2 {
-					id, parseErr := strconv.ParseInt(parts[0], 10, 64)
-					if parseErr == nil {
-						pw.LinkedItems = append(pw.LinkedItems, model.ItemLinkInfo{ID: id, Name: parts[1]})
-					}
-				}
-			}
-		}
-		photos = append(photos, pw)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate photos with links: %w", err)
-	}
-	return photos, nil
-}
-
-// migratePhotoToJunction migrates the photo table from direct item_id FK to the
-// item_photo junction table. Idempotent: skips if item_id column is already gone.
-func (s *Store) migratePhotoToJunction(ctx context.Context) error {
-	// Check if migration is needed by looking for item_id column.
-	var hasItemID bool
-	rows, err := s.conn.QueryContext(ctx, "PRAGMA table_info(photo)")
-	if err != nil {
-		return fmt.Errorf("pragma table_info(photo): %w", err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid int
-		var name, typ string
-		var notNull, pk int
-		var dflt *string
-		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
-			return fmt.Errorf("scan table_info: %w", err)
-		}
-		if name == "item_id" {
-			hasItemID = true
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate table_info: %w", err)
-	}
-	if !hasItemID {
-		return nil // Already migrated or fresh DB
-	}
-
-	slog.Info("migrating photo table: moving item_id to junction table")
-
-	// Temporarily disable FK checks so DROP TABLE photo doesn't cascade-delete
-	// junction rows via the ON DELETE CASCADE constraint.
-	_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF")
-
-	tx, err := s.conn.BeginTx(ctx, nil)
-	if err != nil {
-		_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-		return fmt.Errorf("begin migration tx: %w", err)
-	}
-	defer deferRollback(tx)
-
-	// Migrate existing links to junction table.
-	_, err = tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO item_photo (item_id, photo_id)
-		 SELECT item_id, id FROM photo WHERE item_id IS NOT NULL`)
-	if err != nil {
-		_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-		return fmt.Errorf("migrate links to junction: %w", err)
-	}
-
-	// Recreate photo table without item_id.
-	_, err = tx.ExecContext(ctx,
-		`CREATE TABLE photo_new (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			uuid TEXT NOT NULL UNIQUE,
-			original_filename TEXT NOT NULL DEFAULT '',
-			content_type TEXT NOT NULL,
-			ext TEXT NOT NULL,
-			file_size INTEGER NOT NULL DEFAULT 0,
-			crop_mode TEXT NOT NULL DEFAULT 'fit',
-			uploaded_at DATETIME NOT NULL DEFAULT (datetime('now'))
-		)`)
-	if err != nil {
-		_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-		return fmt.Errorf("create photo_new: %w", err)
-	}
-
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO photo_new (id, uuid, original_filename, content_type, ext, file_size, crop_mode, uploaded_at)
-		 SELECT id, uuid, original_filename, content_type, ext, file_size, crop_mode, uploaded_at FROM photo`)
-	if err != nil {
-		_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-		return fmt.Errorf("copy photo data: %w", err)
-	}
-
-	if _, err = tx.ExecContext(ctx, `DROP TABLE photo`); err != nil {
-		_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-		return fmt.Errorf("drop old photo table: %w", err)
-	}
-
-	if _, err = tx.ExecContext(ctx, `ALTER TABLE photo_new RENAME TO photo`); err != nil {
-		_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-		return fmt.Errorf("rename photo_new: %w", err)
-	}
-
-	// Recreate uuid index.
-	if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_photo_uuid ON photo(uuid)`); err != nil {
-		_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-		return fmt.Errorf("recreate photo uuid index: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-		return fmt.Errorf("commit migration: %w", err)
-	}
-
-	// Re-enable FK checks.
-	_, _ = s.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
-
-	slog.Info("photo junction migration complete")
-	return nil
 }
