@@ -75,16 +75,21 @@ func buildMultipartRequest(t *testing.T, fieldName, filename string, data []byte
 
 type photoMockStore struct {
 	mockStore
-	insertPhotoFn       func(ctx context.Context, p *model.Photo) error
-	getPhotoByUUIDFn    func(ctx context.Context, uuid string) (*model.Photo, error)
-	deletePhotoFn       func(ctx context.Context, uuid string) error
-	listAllPhotosFn     func(ctx context.Context) ([]model.Photo, error)
-	isPhotosEnabledFn   func(ctx context.Context) (bool, error)
-	setPhotosEnabledFn  func(ctx context.Context, enabled bool) error
-	getThumbnailSizeFn  func(ctx context.Context) (int, error)
-	setThumbnailSizeFn  func(ctx context.Context, size int) error
-	unlinkPhotoFn       func(ctx context.Context, uuid string) error
-	updatePhotoCropModeFn func(ctx context.Context, uuid, mode string) error
+	insertPhotoFn            func(ctx context.Context, p *model.Photo) error
+	getPhotoByUUIDFn         func(ctx context.Context, uuid string) (*model.Photo, error)
+	deletePhotoFn            func(ctx context.Context, uuid string) error
+	listAllPhotosFn          func(ctx context.Context) ([]model.Photo, error)
+	isPhotosEnabledFn        func(ctx context.Context) (bool, error)
+	setPhotosEnabledFn       func(ctx context.Context, enabled bool) error
+	getThumbnailSizeFn       func(ctx context.Context) (int, error)
+	setThumbnailSizeFn       func(ctx context.Context, size int) error
+	unlinkPhotoFn            func(ctx context.Context, uuid string) error
+	updatePhotoCropModeFn    func(ctx context.Context, uuid, mode string) error
+	linkPhotoToItemFn        func(ctx context.Context, itemID, photoID int64) error
+	unlinkPhotoFromItemFn    func(ctx context.Context, itemID int64) error
+	getItemsByPhotoIDFn      func(ctx context.Context, photoID int64) ([]model.ItemLinkInfo, error)
+	countItemsByPhotoIDFn    func(ctx context.Context, photoID int64) (int, error)
+	listAllPhotosWithLinksFn func(ctx context.Context) ([]model.PhotoWithLinks, error)
 }
 
 func (m *photoMockStore) InsertPhoto(ctx context.Context, p *model.Photo) error {
@@ -148,6 +153,36 @@ func (m *photoMockStore) UpdatePhotoCropMode(ctx context.Context, uuid, mode str
 	return nil
 }
 func (m *photoMockStore) GetPhotoByItemID(_ context.Context, _ int64) (*model.Photo, error) {
+	return nil, nil
+}
+func (m *photoMockStore) LinkPhotoToItem(ctx context.Context, itemID, photoID int64) error {
+	if m.linkPhotoToItemFn != nil {
+		return m.linkPhotoToItemFn(ctx, itemID, photoID)
+	}
+	return nil
+}
+func (m *photoMockStore) UnlinkPhotoFromItem(ctx context.Context, itemID int64) error {
+	if m.unlinkPhotoFromItemFn != nil {
+		return m.unlinkPhotoFromItemFn(ctx, itemID)
+	}
+	return nil
+}
+func (m *photoMockStore) GetItemsByPhotoID(ctx context.Context, photoID int64) ([]model.ItemLinkInfo, error) {
+	if m.getItemsByPhotoIDFn != nil {
+		return m.getItemsByPhotoIDFn(ctx, photoID)
+	}
+	return nil, nil
+}
+func (m *photoMockStore) CountItemsByPhotoID(ctx context.Context, photoID int64) (int, error) {
+	if m.countItemsByPhotoIDFn != nil {
+		return m.countItemsByPhotoIDFn(ctx, photoID)
+	}
+	return 0, nil
+}
+func (m *photoMockStore) ListAllPhotosWithLinks(ctx context.Context) ([]model.PhotoWithLinks, error) {
+	if m.listAllPhotosWithLinksFn != nil {
+		return m.listAllPhotosWithLinksFn(ctx)
+	}
 	return nil, nil
 }
 
@@ -305,9 +340,21 @@ func TestPhotoUploadPNG(t *testing.T) {
 
 func TestPhotoUploadWithItemID(t *testing.T) {
 	ms := &photoMockStore{}
-	var inserted *model.Photo
+	var insertedPhoto *model.Photo
 	ms.insertPhotoFn = func(_ context.Context, p *model.Photo) error {
-		inserted = p
+		p.ID = 99 // simulate DB setting ID
+		insertedPhoto = p
+		return nil
+	}
+	var linkedItemID, linkedPhotoID int64
+	ms.linkPhotoToItemFn = func(_ context.Context, itemID, photoID int64) error {
+		linkedItemID = itemID
+		linkedPhotoID = photoID
+		return nil
+	}
+	var unlinkedItemID int64
+	ms.unlinkPhotoFromItemFn = func(_ context.Context, itemID int64) error {
+		unlinkedItemID = itemID
 		return nil
 	}
 	ps := newMockPhotoStorage()
@@ -321,9 +368,10 @@ func TestPhotoUploadWithItemID(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusCreated, w.Code, "body: %s", w.Body.String())
-	require.NotNil(t, inserted)
-	require.NotNil(t, inserted.ItemID)
-	assert.Equal(t, int64(42), *inserted.ItemID)
+	require.NotNil(t, insertedPhoto)
+	assert.Equal(t, int64(42), unlinkedItemID, "should unlink existing photo from item first")
+	assert.Equal(t, int64(42), linkedItemID, "should auto-link to item 42")
+	assert.Equal(t, int64(99), linkedPhotoID, "should link the newly inserted photo")
 }
 
 func TestPhotoUploadOversized(t *testing.T) {
@@ -464,8 +512,8 @@ func TestPhotoEndpointsDisabledReturns404(t *testing.T) {
 		{http.MethodPost, "/api/photos/upload"},
 		{http.MethodGet, "/api/photos/some-uuid/full"},
 		{http.MethodGet, "/api/photos/some-uuid/thumb"},
-		{http.MethodDelete, "/api/photos/some-uuid/item"},
 		{http.MethodPost, "/api/photos/regenerate"},
+		{http.MethodGet, "/api/photos"},
 	}
 
 	for _, ep := range endpoints {
@@ -497,47 +545,25 @@ func TestPhotoUploadValidatesMagicBytes(t *testing.T) {
 	assert.Contains(t, resp["error"], "JPEG and PNG")
 }
 
-func TestPhotoUnlink(t *testing.T) {
+func TestPhotoUnlinkFromItem(t *testing.T) {
 	ms := &photoMockStore{}
-	testUUID := "test-uuid-unlink"
-	itemID := int64(42)
-	ms.getPhotoByUUIDFn = func(_ context.Context, uuid string) (*model.Photo, error) {
-		if uuid == testUUID {
-			return &model.Photo{ID: 1, UUID: testUUID, ItemID: &itemID, Ext: ".jpg"}, nil
-		}
-		return nil, fmt.Errorf("not found")
-	}
-	var unlinkedUUID string
-	ms.unlinkPhotoFn = func(_ context.Context, uuid string) error {
-		unlinkedUUID = uuid
+	var unlinkedItemID int64
+	ms.unlinkPhotoFromItemFn = func(_ context.Context, itemID int64) error {
+		unlinkedItemID = itemID
 		return nil
 	}
 
 	ps := newMockPhotoStorage()
 	srv := setupPhotoTestServer(t, ms, ps)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/photos/"+testUUID+"/item", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/items/42/photo", nil)
 	w := httptest.NewRecorder()
 
 	router := srv.Router()
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNoContent, w.Code)
-	assert.Equal(t, testUUID, unlinkedUUID)
-}
-
-func TestPhotoUnlinkNotFound(t *testing.T) {
-	ms := &photoMockStore{}
-	ps := newMockPhotoStorage()
-	srv := setupPhotoTestServer(t, ms, ps)
-
-	req := httptest.NewRequest(http.MethodDelete, "/api/photos/nonexistent/item", nil)
-	w := httptest.NewRecorder()
-
-	router := srv.Router()
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, int64(42), unlinkedItemID)
 }
 
 func TestPhotoSetPhotosEnabled(t *testing.T) {
@@ -609,4 +635,193 @@ func TestPhotoSetThumbnailSizeOutOfRange(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
 		})
 	}
+}
+
+// --- Phase 26: Junction table endpoint tests ---
+
+func TestPhotoLinkCreatesJunction(t *testing.T) {
+	ms := &photoMockStore{}
+	var linkedItemID, linkedPhotoID int64
+	ms.linkPhotoToItemFn = func(_ context.Context, itemID, photoID int64) error {
+		linkedItemID = itemID
+		linkedPhotoID = photoID
+		return nil
+	}
+	ps := newMockPhotoStorage()
+	srv := setupPhotoTestServer(t, ms, ps)
+
+	body := strings.NewReader(`{"photo_id": 5}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/items/1/photo", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router := srv.Router()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code, "body: %s", w.Body.String())
+	assert.Equal(t, int64(1), linkedItemID)
+	assert.Equal(t, int64(5), linkedPhotoID)
+}
+
+func TestPhotoLinkReplacesExisting(t *testing.T) {
+	ms := &photoMockStore{}
+	var unlinkCalled bool
+	var unlinkItemID int64
+	ms.unlinkPhotoFromItemFn = func(_ context.Context, itemID int64) error {
+		unlinkCalled = true
+		unlinkItemID = itemID
+		return nil
+	}
+	var linkCalled bool
+	ms.linkPhotoToItemFn = func(_ context.Context, _, _ int64) error {
+		linkCalled = true
+		// Verify unlink was called before link.
+		assert.True(t, unlinkCalled, "unlinkPhotoFromItem should be called before linkPhotoToItem")
+		return nil
+	}
+	ps := newMockPhotoStorage()
+	srv := setupPhotoTestServer(t, ms, ps)
+
+	body := strings.NewReader(`{"photo_id": 10}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/items/7/photo", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router := srv.Router()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+	assert.True(t, unlinkCalled, "should call unlinkPhotoFromItem")
+	assert.Equal(t, int64(7), unlinkItemID)
+	assert.True(t, linkCalled, "should call linkPhotoToItem")
+}
+
+func TestPhotoUnlinkPreservesPhoto(t *testing.T) {
+	ms := &photoMockStore{}
+	var unlinkCalled bool
+	ms.unlinkPhotoFromItemFn = func(_ context.Context, itemID int64) error {
+		unlinkCalled = true
+		assert.Equal(t, int64(42), itemID)
+		return nil
+	}
+	deletePhotoCalled := false
+	ms.deletePhotoFn = func(_ context.Context, _ string) error {
+		deletePhotoCalled = true
+		return nil
+	}
+	ps := newMockPhotoStorage()
+	srv := setupPhotoTestServer(t, ms, ps)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/items/42/photo", nil)
+	w := httptest.NewRecorder()
+
+	router := srv.Router()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+	assert.True(t, unlinkCalled, "should call unlinkPhotoFromItem")
+	assert.False(t, deletePhotoCalled, "should NOT call deletePhoto -- unlink preserves photo record")
+}
+
+func TestPhotoListForPicker(t *testing.T) {
+	ms := &photoMockStore{}
+	ms.listAllPhotosWithLinksFn = func(_ context.Context) ([]model.PhotoWithLinks, error) {
+		return []model.PhotoWithLinks{
+			{
+				Photo:       model.Photo{ID: 1, UUID: "uuid-1", ContentType: "image/jpeg", Ext: ".jpg"},
+				LinkedItems: []model.ItemLinkInfo{{ID: 10, Name: "M6 Bolt"}},
+			},
+			{
+				Photo: model.Photo{ID: 2, UUID: "uuid-2", ContentType: "image/png", Ext: ".png"},
+			},
+		}, nil
+	}
+	ps := newMockPhotoStorage()
+	srv := setupPhotoTestServer(t, ms, ps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/photos", nil)
+	w := httptest.NewRecorder()
+
+	router := srv.Router()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
+
+	var photos []model.PhotoWithLinks
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&photos))
+	require.Len(t, photos, 2)
+
+	assert.Equal(t, "uuid-1", photos[0].UUID)
+	require.Len(t, photos[0].LinkedItems, 1)
+	assert.Equal(t, "M6 Bolt", photos[0].LinkedItems[0].Name)
+
+	assert.Equal(t, "uuid-2", photos[1].UUID)
+	assert.Empty(t, photos[1].LinkedItems)
+}
+
+func TestPhotoOldUnlinkEndpointRemoved(t *testing.T) {
+	ms := &photoMockStore{}
+	ms.getPhotoByUUIDFn = func(_ context.Context, uuid string) (*model.Photo, error) {
+		return &model.Photo{ID: 1, UUID: uuid, Ext: ".jpg"}, nil
+	}
+	ps := newMockPhotoStorage()
+	srv := setupPhotoTestServer(t, ms, ps)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/photos/some-uuid/item", nil)
+	w := httptest.NewRecorder()
+
+	router := srv.Router()
+	router.ServeHTTP(w, req)
+
+	// Should be 404 or 405 since the route no longer exists.
+	assert.True(t, w.Code == http.StatusNotFound || w.Code == http.StatusMethodNotAllowed,
+		"old DELETE /api/photos/{uuid}/item should be gone, got %d", w.Code)
+}
+
+func TestPhotoUploadWithoutItemIDNoLink(t *testing.T) {
+	ms := &photoMockStore{}
+	linkCalled := false
+	ms.linkPhotoToItemFn = func(_ context.Context, _, _ int64) error {
+		linkCalled = true
+		return nil
+	}
+	ps := newMockPhotoStorage()
+	srv := setupPhotoTestServer(t, ms, ps)
+
+	jpegData := createTestJPEG(t)
+	req := buildMultipartRequest(t, "photo", "test.jpg", jpegData, nil)
+	w := httptest.NewRecorder()
+
+	router := srv.Router()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code, "body: %s", w.Body.String())
+	assert.False(t, linkCalled, "should NOT call linkPhotoToItem when no item_id provided")
+}
+
+func TestPhotoLinkSoftLimitWarning(t *testing.T) {
+	ms := &photoMockStore{}
+	ms.countItemsByPhotoIDFn = func(_ context.Context, _ int64) (int, error) {
+		return 25, nil // exceed soft limit
+	}
+	var linkCalled bool
+	ms.linkPhotoToItemFn = func(_ context.Context, _, _ int64) error {
+		linkCalled = true
+		return nil
+	}
+	ps := newMockPhotoStorage()
+	srv := setupPhotoTestServer(t, ms, ps)
+
+	body := strings.NewReader(`{"photo_id": 1}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/items/1/photo", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router := srv.Router()
+	router.ServeHTTP(w, req)
+
+	// Should still succeed (soft limit warns but allows).
+	require.Equal(t, http.StatusNoContent, w.Code)
+	assert.True(t, linkCalled, "should still link even when exceeding soft limit")
 }

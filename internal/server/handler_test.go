@@ -1079,6 +1079,15 @@ func (m *mockStore) GetThumbnailSize(_ context.Context) (int, error)            
 func (m *mockStore) SetThumbnailSize(_ context.Context, _ int) error            { return nil }
 func (m *mockStore) UpdatePhotoCropMode(_ context.Context, _, _ string) error   { return nil }
 func (m *mockStore) UnlinkPhoto(_ context.Context, _ string) error              { return nil }
+func (m *mockStore) LinkPhotoToItem(_ context.Context, _, _ int64) error        { return nil }
+func (m *mockStore) UnlinkPhotoFromItem(_ context.Context, _ int64) error       { return nil }
+func (m *mockStore) GetItemsByPhotoID(_ context.Context, _ int64) ([]model.ItemLinkInfo, error) {
+	return nil, nil
+}
+func (m *mockStore) CountItemsByPhotoID(_ context.Context, _ int64) (int, error) { return 0, nil }
+func (m *mockStore) ListAllPhotosWithLinks(_ context.Context) ([]model.PhotoWithLinks, error) {
+	return nil, nil
+}
 
 func errStore() *mockStore {
 	dbErr := fmt.Errorf("database error")

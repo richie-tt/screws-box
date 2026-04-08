@@ -68,6 +68,8 @@ func (srv *Server) Router() http.Handler {
 						r.Delete("/", srv.handleDeleteItem())
 						r.Post("/tags", srv.handleAddTag())
 						r.Delete("/tags/{tagName}", srv.handleRemoveTag())
+						r.Post("/photo", srv.handleLinkPhoto())
+						r.Delete("/photo", srv.handleUnlinkPhotoFromItem())
 					})
 				})
 				r.Get("/tags", srv.handleListTags())
@@ -98,10 +100,10 @@ func (srv *Server) Router() http.Handler {
 			// Photo routes (feature-gated)
 			r.Route("/api/photos", func(r chi.Router) {
 				r.Use(srv.requirePhotosEnabled)
+				r.Get("/", srv.handleListPhotosJSON())
 				r.Post("/upload", srv.handlePhotoUpload())
 				r.Get("/{uuid}/full", srv.handleServePhoto(false))
 				r.Get("/{uuid}/thumb", srv.handleServePhoto(true))
-				r.Delete("/{uuid}/item", srv.handleUnlinkPhoto())
 				r.Post("/regenerate", srv.handleRegenerateThumbnails())
 			})
 

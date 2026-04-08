@@ -310,24 +310,90 @@ func (srv *Server) handleSetThumbnailSize() http.HandlerFunc {
 	}
 }
 
-// handleUnlinkPhoto detaches a photo from its item by setting item_id to NULL.
-// The photo file remains in storage; only the DB association is removed.
-func (srv *Server) handleUnlinkPhoto() http.HandlerFunc {
+// handleLinkPhoto links an existing photo to an item via the junction table.
+// Enforces one-photo-per-item by unlinking any existing photo first.
+// POST /api/items/{itemID}/photo with body {"photo_id": N}
+func (srv *Server) handleLinkPhoto() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		photoUUID := chi.URLParam(r, "uuid")
-
-		photo, err := srv.store.GetPhotoByUUID(r.Context(), photoUUID)
-		if err != nil || photo == nil {
-			http.NotFound(w, r)
+		itemID, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid item ID.")
 			return
 		}
 
-		if err := srv.store.UnlinkPhoto(r.Context(), photoUUID); err != nil {
-			writeError(w, http.StatusInternalServerError, "Failed to unlink photo.")
+		var req struct {
+			PhotoID int64 `json:"photo_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid JSON body.")
+			return
+		}
+		if req.PhotoID <= 0 {
+			writeError(w, http.StatusBadRequest, "photo_id is required.")
+			return
+		}
+
+		// Enforce one-photo-per-item: remove existing link first (D-04).
+		if err := srv.store.UnlinkPhotoFromItem(r.Context(), itemID); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to unlink existing photo.")
+			return
+		}
+
+		// Check soft limit on photo side (D-05).
+		count, countErr := srv.store.CountItemsByPhotoID(r.Context(), req.PhotoID)
+		if countErr == nil && count >= 20 {
+			slog.Warn("photo linked to many items", "photo_id", req.PhotoID, "count", count)
+		}
+
+		if err := srv.store.LinkPhotoToItem(r.Context(), itemID, req.PhotoID); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to link photo.")
 			return
 		}
 
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// handleUnlinkPhotoFromItem removes the photo link for a specific item.
+// The photo record and file remain; only the junction row is deleted.
+// DELETE /api/items/{itemID}/photo
+func (srv *Server) handleUnlinkPhotoFromItem() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		itemID, err := strconv.ParseInt(chi.URLParam(r, "itemID"), 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid item ID.")
+			return
+		}
+
+		if err := srv.store.UnlinkPhotoFromItem(r.Context(), itemID); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to unlink photo from item.")
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// handleListPhotosJSON returns all photos with linked item info as JSON.
+// GET /api/photos
+func (srv *Server) handleListPhotosJSON() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		photos, err := srv.store.ListAllPhotosWithLinks(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to list photos.")
+			return
+		}
+
+		// Set computed URL fields.
+		for i := range photos {
+			photos[i].ThumbURL = "/api/photos/" + photos[i].UUID + "/thumb"
+			photos[i].FullURL = "/api/photos/" + photos[i].UUID + "/full"
+		}
+
+		if photos == nil {
+			photos = []model.PhotoWithLinks{}
+		}
+		writeJSON(w, http.StatusOK, photos)
 	}
 }
 
