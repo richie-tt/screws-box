@@ -145,7 +145,6 @@ func (srv *Server) handlePhotoUpload() http.HandlerFunc {
 		// Create DB record.
 		photo := model.Photo{
 			UUID:             photoUUID,
-			ItemID:           itemID,
 			OriginalFilename: header.Filename,
 			ContentType:      contentType,
 			Ext:              ext,
@@ -157,6 +156,14 @@ func (srv *Server) handlePhotoUpload() http.HandlerFunc {
 			slog.Error("insert photo record failed", "err", err)
 			writeError(w, http.StatusInternalServerError, "Failed to save photo record.")
 			return
+		}
+
+		// Auto-link photo to item if item_id was provided.
+		if itemID != nil {
+			_ = srv.store.UnlinkPhotoFromItem(r.Context(), *itemID)
+			if linkErr := srv.store.LinkPhotoToItem(r.Context(), *itemID, photo.ID); linkErr != nil {
+				slog.Error("auto-link photo to item failed", "err", linkErr)
+			}
 		}
 
 		// Set computed URL fields.

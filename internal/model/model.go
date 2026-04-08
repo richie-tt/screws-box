@@ -106,10 +106,10 @@ type Cell struct {
 }
 
 // Photo represents a photo stored in the photo storage backend.
+// The item-photo relationship is stored in the item_photo junction table, not on this struct.
 type Photo struct {
 	ID               int64  `json:"id"`
 	UUID             string `json:"uuid"`
-	ItemID           *int64 `json:"item_id"`
 	OriginalFilename string `json:"original_filename"`
 	ContentType      string `json:"content_type"`
 	Ext              string `json:"ext"`
@@ -118,6 +118,18 @@ type Photo struct {
 	UploadedAt       string `json:"uploaded_at"`
 	ThumbURL         string `json:"thumb_url,omitempty"`
 	FullURL          string `json:"full_url,omitempty"`
+}
+
+// PhotoWithLinks extends Photo with linked item information for the photo picker.
+type PhotoWithLinks struct {
+	Photo
+	LinkedItems []ItemLinkInfo `json:"linked_items,omitempty"`
+}
+
+// ItemLinkInfo identifies an item linked to a photo.
+type ItemLinkInfo struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 // ItemResponse is the API-ready representation of an item.

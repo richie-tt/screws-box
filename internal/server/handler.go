@@ -63,6 +63,12 @@ type StoreService interface {
 	SetThumbnailSize(ctx context.Context, size int) error
 	UpdatePhotoCropMode(ctx context.Context, uuid, mode string) error
 	UnlinkPhoto(ctx context.Context, uuid string) error
+	// Junction table methods (Phase 26)
+	LinkPhotoToItem(ctx context.Context, itemID, photoID int64) error
+	UnlinkPhotoFromItem(ctx context.Context, itemID int64) error
+	GetItemsByPhotoID(ctx context.Context, photoID int64) ([]model.ItemLinkInfo, error)
+	CountItemsByPhotoID(ctx context.Context, photoID int64) (int, error)
+	ListAllPhotosWithLinks(ctx context.Context) ([]model.PhotoWithLinks, error)
 }
 
 // --- Healthcheck ---

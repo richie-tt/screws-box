@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	_ "modernc.org/sqlite"
 )
 
 func openTestStore(t *testing.T) *Store {
@@ -1633,12 +1636,9 @@ func TestDeleteUsedTagFails(t *testing.T) {
 func TestPhotoInsertAndGetByUUID(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
-	containerID := getTestContainerID(t, s)
-	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
 
 	p := &model.Photo{
 		UUID:             "test-uuid-001",
-		ItemID:           &itemID,
 		OriginalFilename: "bolt.jpg",
 		ContentType:      "image/jpeg",
 		Ext:              ".jpg",
@@ -1652,7 +1652,6 @@ func TestPhotoInsertAndGetByUUID(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "test-uuid-001", got.UUID)
-	assert.Equal(t, &itemID, got.ItemID)
 	assert.Equal(t, "bolt.jpg", got.OriginalFilename)
 	assert.Equal(t, "image/jpeg", got.ContentType)
 	assert.Equal(t, ".jpg", got.Ext)
@@ -1674,15 +1673,15 @@ func TestPhotoGetByItemID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got, "should return nil when item has no photo")
 
-	// Insert photo
+	// Insert photo and link via junction table
 	p := &model.Photo{
 		UUID:        "test-uuid-002",
-		ItemID:      &itemID,
 		ContentType: "image/png",
 		Ext:         ".png",
 		CropMode:    "fit",
 	}
 	require.NoError(t, s.InsertPhoto(ctx, p))
+	require.NoError(t, s.LinkPhotoToItem(ctx, itemID, p.ID))
 
 	got, err = s.GetPhotoByItemID(ctx, itemID)
 	require.NoError(t, err)
@@ -1693,12 +1692,9 @@ func TestPhotoGetByItemID(t *testing.T) {
 func TestPhotoDelete(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
-	containerID := getTestContainerID(t, s)
-	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
 
 	p := &model.Photo{
 		UUID:        "test-uuid-003",
-		ItemID:      &itemID,
 		ContentType: "image/jpeg",
 		Ext:         ".jpg",
 		CropMode:    "fit",
@@ -1715,11 +1711,9 @@ func TestPhotoDelete(t *testing.T) {
 func TestPhotoListAll(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
-	containerID := getTestContainerID(t, s)
-	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
 
-	p1 := &model.Photo{UUID: "uuid-a", ItemID: &itemID, ContentType: "image/jpeg", Ext: ".jpg", CropMode: "fit"}
-	p2 := &model.Photo{UUID: "uuid-b", ItemID: &itemID, ContentType: "image/png", Ext: ".png", CropMode: "crop"}
+	p1 := &model.Photo{UUID: "uuid-a", ContentType: "image/jpeg", Ext: ".jpg", CropMode: "fit"}
+	p2 := &model.Photo{UUID: "uuid-b", ContentType: "image/png", Ext: ".png", CropMode: "crop"}
 	require.NoError(t, s.InsertPhoto(ctx, p1))
 	require.NoError(t, s.InsertPhoto(ctx, p2))
 
@@ -1764,12 +1758,9 @@ func TestPhotoGetThumbnailSize(t *testing.T) {
 func TestPhotoUpdateCropMode(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
-	containerID := getTestContainerID(t, s)
-	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
 
 	p := &model.Photo{
 		UUID:        "test-uuid-crop",
-		ItemID:      &itemID,
 		ContentType: "image/jpeg",
 		Ext:         ".jpg",
 		CropMode:    "fit",
@@ -1782,4 +1773,279 @@ func TestPhotoUpdateCropMode(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "crop", got.CropMode)
+}
+
+// --- Junction table tests ---
+
+func TestFreshSchemaJunction(t *testing.T) {
+	s := openTestStore(t)
+
+	// Verify item_photo table exists with correct columns.
+	rows, err := s.conn.Query("PRAGMA table_info(item_photo)")
+	require.NoError(t, err)
+	defer rows.Close()
+
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dflt *string
+		require.NoError(t, rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk))
+		cols[name] = true
+	}
+	require.NoError(t, rows.Err())
+	assert.True(t, cols["item_id"], "item_photo should have item_id column")
+	assert.True(t, cols["photo_id"], "item_photo should have photo_id column")
+
+	// Verify photo table does NOT have item_id column.
+	rows2, err := s.conn.Query("PRAGMA table_info(photo)")
+	require.NoError(t, err)
+	defer rows2.Close()
+
+	photoCols := map[string]bool{}
+	for rows2.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dflt *string
+		require.NoError(t, rows2.Scan(&cid, &name, &typ, &notNull, &dflt, &pk))
+		photoCols[name] = true
+	}
+	require.NoError(t, rows2.Err())
+	assert.False(t, photoCols["item_id"], "photo table should NOT have item_id column on fresh DB")
+}
+
+func TestMigratePhotoJunction(t *testing.T) {
+	// Simulate old schema: create a DB with photo.item_id, insert data, then run migration.
+	tmpFile := filepath.Join(t.TempDir(), "migrate-test.db")
+
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", tmpFile))
+	require.NoError(t, err)
+
+	// Create old schema manually (with item_id on photo).
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS shelf (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL DEFAULT 'My Organizer',
+		rows INTEGER NOT NULL,
+		cols INTEGER NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO shelf (name, rows, cols) VALUES ('Test', 2, 2)`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS container (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		shelf_id INTEGER NOT NULL REFERENCES shelf(id) ON DELETE CASCADE,
+		col INTEGER NOT NULL,
+		row INTEGER NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		UNIQUE(shelf_id, col, row)
+	)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO container (shelf_id, col, row) VALUES (1, 1, 1)`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS item (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		container_id INTEGER NOT NULL REFERENCES container(id) ON DELETE CASCADE,
+		name TEXT NOT NULL,
+		description TEXT,
+		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO item (container_id, name) VALUES (1, 'M6 Bolt')`)
+	require.NoError(t, err)
+
+	// Old photo table WITH item_id.
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS photo (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		uuid TEXT NOT NULL UNIQUE,
+		item_id INTEGER REFERENCES item(id) ON DELETE SET NULL,
+		original_filename TEXT NOT NULL DEFAULT '',
+		content_type TEXT NOT NULL,
+		ext TEXT NOT NULL DEFAULT '',
+		file_size INTEGER NOT NULL DEFAULT 0,
+		crop_mode TEXT NOT NULL DEFAULT 'fit',
+		uploaded_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	)`)
+	require.NoError(t, err)
+
+	// Insert a photo linked to item 1.
+	_, err = db.Exec(`INSERT INTO photo (uuid, item_id, content_type, ext) VALUES ('old-uuid', 1, 'image/jpeg', '.jpg')`)
+	require.NoError(t, err)
+
+	db.Close()
+
+	// Now open with Store which should run migration.
+	s := &Store{}
+	require.NoError(t, s.Open(tmpFile))
+	defer s.Close()
+
+	ctx := context.Background()
+
+	// Verify photo table no longer has item_id.
+	rows, err := s.conn.QueryContext(ctx, "PRAGMA table_info(photo)")
+	require.NoError(t, err)
+	defer rows.Close()
+	hasItemID := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dflt *string
+		require.NoError(t, rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk))
+		if name == "item_id" {
+			hasItemID = true
+		}
+	}
+	assert.False(t, hasItemID, "photo table should not have item_id after migration")
+
+	// Verify link was migrated to junction table.
+	got, err := s.GetPhotoByItemID(ctx, 1)
+	require.NoError(t, err)
+	require.NotNil(t, got, "migrated link should be accessible via junction table")
+	assert.Equal(t, "old-uuid", got.UUID)
+}
+
+func TestLinkPhotoToItem(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	p := &model.Photo{UUID: "link-uuid", ContentType: "image/jpeg", Ext: ".jpg", CropMode: "fit"}
+	require.NoError(t, s.InsertPhoto(ctx, p))
+
+	require.NoError(t, s.LinkPhotoToItem(ctx, itemID, p.ID))
+
+	got, err := s.GetPhotoByItemID(ctx, itemID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "link-uuid", got.UUID)
+}
+
+func TestUnlinkPhotoFromItem(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	p := &model.Photo{UUID: "unlink-uuid", ContentType: "image/jpeg", Ext: ".jpg", CropMode: "fit"}
+	require.NoError(t, s.InsertPhoto(ctx, p))
+	require.NoError(t, s.LinkPhotoToItem(ctx, itemID, p.ID))
+
+	// Unlink
+	require.NoError(t, s.UnlinkPhotoFromItem(ctx, itemID))
+
+	got, err := s.GetPhotoByItemID(ctx, itemID)
+	require.NoError(t, err)
+	assert.Nil(t, got, "photo should be unlinked from item")
+
+	// Photo record should still exist.
+	still, err := s.GetPhotoByUUID(ctx, "unlink-uuid")
+	require.NoError(t, err)
+	require.NotNil(t, still, "photo record should still exist after unlink")
+}
+
+func TestGetItemsByPhotoID(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	item1 := insertTestItem(t, s, containerID, "M6 Bolt")
+	item2 := insertTestItem(t, s, containerID, "M8 Nut")
+
+	p := &model.Photo{UUID: "items-uuid", ContentType: "image/jpeg", Ext: ".jpg", CropMode: "fit"}
+	require.NoError(t, s.InsertPhoto(ctx, p))
+	require.NoError(t, s.LinkPhotoToItem(ctx, item1, p.ID))
+	require.NoError(t, s.LinkPhotoToItem(ctx, item2, p.ID))
+
+	items, err := s.GetItemsByPhotoID(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Len(t, items, 2)
+
+	names := []string{items[0].Name, items[1].Name}
+	assert.Contains(t, names, "M6 Bolt")
+	assert.Contains(t, names, "M8 Nut")
+}
+
+func TestCountItemsByPhotoID(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	item1 := insertTestItem(t, s, containerID, "M6 Bolt")
+	item2 := insertTestItem(t, s, containerID, "M8 Nut")
+
+	p := &model.Photo{UUID: "count-uuid", ContentType: "image/jpeg", Ext: ".jpg", CropMode: "fit"}
+	require.NoError(t, s.InsertPhoto(ctx, p))
+
+	count, err := s.CountItemsByPhotoID(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+
+	require.NoError(t, s.LinkPhotoToItem(ctx, item1, p.ID))
+	require.NoError(t, s.LinkPhotoToItem(ctx, item2, p.ID))
+
+	count, err = s.CountItemsByPhotoID(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+}
+
+func TestListPhotosWithLinks(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	p1 := &model.Photo{UUID: "wl-uuid-a", ContentType: "image/jpeg", Ext: ".jpg", CropMode: "fit"}
+	p2 := &model.Photo{UUID: "wl-uuid-b", ContentType: "image/png", Ext: ".png", CropMode: "crop"}
+	require.NoError(t, s.InsertPhoto(ctx, p1))
+	require.NoError(t, s.InsertPhoto(ctx, p2))
+
+	// Link p1 to item.
+	require.NoError(t, s.LinkPhotoToItem(ctx, itemID, p1.ID))
+
+	photos, err := s.ListAllPhotosWithLinks(ctx)
+	require.NoError(t, err)
+	assert.Len(t, photos, 2)
+
+	// Find p1 in results.
+	var linked *model.PhotoWithLinks
+	var unlinked *model.PhotoWithLinks
+	for i := range photos {
+		if photos[i].UUID == "wl-uuid-a" {
+			linked = &photos[i]
+		} else if photos[i].UUID == "wl-uuid-b" {
+			unlinked = &photos[i]
+		}
+	}
+	require.NotNil(t, linked, "should find linked photo")
+	require.NotNil(t, unlinked, "should find unlinked photo")
+
+	assert.Len(t, linked.LinkedItems, 1)
+	assert.Equal(t, "M6 Bolt", linked.LinkedItems[0].Name)
+	assert.Empty(t, unlinked.LinkedItems)
+}
+
+func TestDeletePhotoCascadesToJunction(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	p := &model.Photo{UUID: "cascade-uuid", ContentType: "image/jpeg", Ext: ".jpg", CropMode: "fit"}
+	require.NoError(t, s.InsertPhoto(ctx, p))
+	require.NoError(t, s.LinkPhotoToItem(ctx, itemID, p.ID))
+
+	// Delete photo -- should cascade to junction table.
+	require.NoError(t, s.DeletePhoto(ctx, "cascade-uuid"))
+
+	// Junction row should be gone too.
+	count, err := s.CountItemsByPhotoID(ctx, p.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
 }
