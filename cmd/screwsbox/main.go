@@ -10,6 +10,7 @@ import (
 	"screws-box/internal/model"
 	"screws-box/internal/server"
 	"screws-box/internal/session"
+	"screws-box/internal/storage"
 	"screws-box/internal/store"
 	"syscall"
 	"time"
@@ -116,7 +117,14 @@ func run() error {
 	}
 	sessionMgr := session.NewManager(sessionStore, sessionTTL, storeType)
 
-	appSrv := server.NewServer(&s, sessionMgr)
+	photosDir := os.Getenv("PHOTOS_DIR")
+	if photosDir == "" {
+		photosDir = "./photos"
+	}
+	photoStorage := storage.NewLocalStorage(photosDir)
+	slog.Info("photos storage configured", "path", photosDir)
+
+	appSrv := server.NewServer(&s, sessionMgr, photoStorage)
 
 	port := os.Getenv("PORT")
 	if port == "" {

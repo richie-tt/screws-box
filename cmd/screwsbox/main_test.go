@@ -33,7 +33,7 @@ func testRouter(t *testing.T, s *store.Store) http.Handler {
 	ms := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
 	t.Cleanup(func() { ms.Close() })
 	mgr := session.NewManager(ms, 1*time.Hour, "Memory")
-	srv := server.NewServer(s, mgr)
+	srv := server.NewServer(s, mgr, nil)
 	return srv.Router()
 }
 
