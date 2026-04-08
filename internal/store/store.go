@@ -107,7 +107,6 @@ var schemaDDL = []string{
 		uploaded_at DATETIME NOT NULL DEFAULT (datetime('now'))
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_photo_uuid ON photo(uuid)`,
-	`CREATE INDEX IF NOT EXISTS idx_photo_item_id ON photo(item_id)`,
 }
 
 // migrations runs ALTER TABLE statements for columns added after the initial schema.
@@ -126,6 +125,10 @@ var migrations = []string{
 	// Photo feature columns
 	`ALTER TABLE shelf ADD COLUMN photos_enabled INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE shelf ADD COLUMN thumbnail_size INTEGER NOT NULL DEFAULT 200`,
+	// Photo table columns (for databases with an older photo schema)
+	`ALTER TABLE photo ADD COLUMN item_id INTEGER REFERENCES item(id) ON DELETE SET NULL`,
+	`ALTER TABLE photo ADD COLUMN ext TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE photo ADD COLUMN crop_mode TEXT NOT NULL DEFAULT 'fit'`,
 }
 
 // deferRollback is used with defer to rollback a transaction.
@@ -238,6 +241,10 @@ func (s *Store) createSchema() error {
 	for _, m := range migrations {
 		_, _ = s.conn.Exec(m) // ignore "duplicate column" errors
 	}
+
+	// Post-migration indexes (depend on columns added by migrations).
+	_, _ = s.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_photo_item_id ON photo(item_id)`)
+
 	return nil
 }
 
