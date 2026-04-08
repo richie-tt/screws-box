@@ -3,7 +3,6 @@ package server
 import (
 	"io/fs"
 	"net/http"
-
 	"screws-box/internal/session"
 	"screws-box/internal/storage"
 

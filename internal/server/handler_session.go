@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"screws-box/internal/session"
 	"sort"
 	"time"
-
-	"screws-box/internal/session"
 
 	"github.com/go-chi/chi/v5"
 )

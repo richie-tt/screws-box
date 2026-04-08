@@ -817,11 +817,7 @@ func (srv *Server) handleOIDCStart() http.HandlerFunc {
 			return
 		}
 		// Build callback URL from request
-		scheme := "http"
-		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-			scheme = "https"
-		}
-		callbackURL := fmt.Sprintf("%s://%s/auth/callback", scheme, r.Host)
+		callbackURL := fmt.Sprintf("%s://%s/auth/callback", requestScheme(r), r.Host)
 
 		// Create OIDC provider
 		provider, err := oidcpkg.NewProviderFromConfig(ctx, cfg.IssuerURL, cfg.ClientID, cfg.ClientSecret, callbackURL)
@@ -847,8 +843,7 @@ func (srv *Server) handleOIDCStart() http.HandlerFunc {
 			return
 		}
 		// Set state cookie and redirect to provider
-		secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-		http.SetCookie(w, oidcpkg.MakeStateCookieHTTP(cookieValue, secure))
+		http.SetCookie(w, oidcpkg.MakeStateCookieHTTP(cookieValue, isHTTPS(r)))
 		authURL := provider.AuthURL(state, nonce, verifier)
 		http.Redirect(w, r, authURL, http.StatusFound)
 	}
@@ -859,7 +854,7 @@ func (srv *Server) handleOIDCCallback() http.HandlerFunc {
 		ctx := r.Context()
 		// Check for error from provider
 		if errParam := r.URL.Query().Get("error"); errParam != "" {
-			slog.Warn("oidc callback: provider error", "error", errParam, "desc", r.URL.Query().Get("error_description"))
+			slog.Warn("oidc callback: provider error", "error", errParam, "desc", r.URL.Query().Get("error_description")) //nolint:gosec // OIDC error params logged for debugging
 			http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
 			return
 		}
@@ -896,8 +891,7 @@ func (srv *Server) handleOIDCCallback() http.HandlerFunc {
 			return
 		}
 		// Clear state cookie
-		secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-		http.SetCookie(w, oidcpkg.ClearStateCookieHTTP(secure))
+		http.SetCookie(w, oidcpkg.ClearStateCookieHTTP(isHTTPS(r)))
 
 		// Load OIDC config
 		cfg, err := srv.store.GetOIDCConfig(ctx)
@@ -906,11 +900,7 @@ func (srv *Server) handleOIDCCallback() http.HandlerFunc {
 			return
 		}
 		// Build callback URL (same derivation as start handler)
-		scheme := "http"
-		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-			scheme = "https"
-		}
-		callbackURL := fmt.Sprintf("%s://%s/auth/callback", scheme, r.Host)
+		callbackURL := fmt.Sprintf("%s://%s/auth/callback", requestScheme(r), r.Host)
 
 		// Create provider and exchange code
 		provider, err := oidcpkg.NewProviderFromConfig(ctx, cfg.IssuerURL, cfg.ClientID, cfg.ClientSecret, callbackURL)
@@ -1148,6 +1138,19 @@ func (srv *Server) handleUpdateAuthSettings() http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, updated)
 	}
+}
+
+// isHTTPS reports whether the request arrived over HTTPS (directly or via proxy).
+func isHTTPS(r *http.Request) bool {
+	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+}
+
+// requestScheme returns "https" or "http" based on the incoming request.
+func requestScheme(r *http.Request) string {
+	if isHTTPS(r) {
+		return "https"
+	}
+	return "http"
 }
 
 // --- Duplicates ---

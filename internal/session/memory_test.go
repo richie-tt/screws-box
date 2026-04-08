@@ -257,7 +257,7 @@ func TestMemoryStore_List_Empty(t *testing.T) {
 	sessions, err := m.List(context.Background())
 	require.NoError(t, err)
 	assert.NotNil(t, sessions, "should return empty slice, not nil")
-	assert.Len(t, sessions, 0)
+	assert.Empty(t, sessions)
 }
 
 func TestMemoryStore_ConcurrentAccess(t *testing.T) {
@@ -266,7 +266,7 @@ func TestMemoryStore_ConcurrentAccess(t *testing.T) {
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
