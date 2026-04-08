@@ -5,11 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"testing"
-	"time"
-
 	"screws-box/internal/session"
 	"screws-box/internal/store"
+	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +16,7 @@ import (
 
 // setupSessionTestRouter creates a test server with a MemoryStore and returns the router,
 // the session manager, and the memory store so tests can create sessions directly.
-func setupSessionTestRouter(t *testing.T) (http.Handler, *session.Manager, *session.MemoryStore) {
+func setupSessionTestRouter(t *testing.T) (http.Handler, *session.Manager, *session.MemoryStore) { //nolint:unparam // all returns kept for future test flexibility
 	t.Helper()
 	s := &store.Store{}
 	tmpFile := filepath.Join(t.TempDir(), "test.db")
@@ -171,7 +170,7 @@ func TestHandleRevokeAllOthers(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 	assert.Equal(t, true, resp["ok"])
-	assert.Equal(t, float64(2), resp["count"])
+	assert.InDelta(t, float64(2), resp["count"], 0)
 
 	// Verify only own session remains
 	req2 := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
