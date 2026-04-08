@@ -1062,6 +1062,23 @@ func (m *mockStore) DeleteUnusedTag(ctx context.Context, tagID int64) error {
 	return nil
 }
 
+// Photo interface stubs for mockStore
+
+func (m *mockStore) InsertPhoto(_ context.Context, _ *model.Photo) error    { return nil }
+func (m *mockStore) GetPhotoByUUID(_ context.Context, _ string) (*model.Photo, error) {
+	return nil, nil
+}
+func (m *mockStore) GetPhotoByItemID(_ context.Context, _ int64) (*model.Photo, error) {
+	return nil, nil
+}
+func (m *mockStore) DeletePhoto(_ context.Context, _ string) error              { return nil }
+func (m *mockStore) ListAllPhotos(_ context.Context) ([]model.Photo, error)     { return nil, nil }
+func (m *mockStore) IsPhotosEnabled(_ context.Context) (bool, error)            { return false, nil }
+func (m *mockStore) SetPhotosEnabled(_ context.Context, _ bool) error           { return nil }
+func (m *mockStore) GetThumbnailSize(_ context.Context) (int, error)            { return 200, nil }
+func (m *mockStore) SetThumbnailSize(_ context.Context, _ int) error            { return nil }
+func (m *mockStore) UpdatePhotoCropMode(_ context.Context, _, _ string) error   { return nil }
+
 func errStore() *mockStore {
 	dbErr := fmt.Errorf("database error")
 	return &mockStore{

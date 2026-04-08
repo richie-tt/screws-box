@@ -95,6 +95,19 @@ var schemaDDL = []string{
 		updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
 		UNIQUE(sub, issuer)
 	)`,
+	`CREATE TABLE IF NOT EXISTS photo (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		uuid TEXT NOT NULL UNIQUE,
+		item_id INTEGER REFERENCES item(id) ON DELETE SET NULL,
+		original_filename TEXT NOT NULL DEFAULT '',
+		content_type TEXT NOT NULL,
+		ext TEXT NOT NULL,
+		file_size INTEGER NOT NULL DEFAULT 0,
+		crop_mode TEXT NOT NULL DEFAULT 'fit',
+		uploaded_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_photo_uuid ON photo(uuid)`,
+	`CREATE INDEX IF NOT EXISTS idx_photo_item_id ON photo(item_id)`,
 }
 
 // migrations runs ALTER TABLE statements for columns added after the initial schema.
@@ -110,6 +123,9 @@ var migrations = []string{
 	`ALTER TABLE shelf ADD COLUMN oidc_client_secret TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE shelf ADD COLUMN oidc_display_name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE shelf ADD COLUMN encryption_key TEXT NOT NULL DEFAULT ''`,
+	// Photo feature columns
+	`ALTER TABLE shelf ADD COLUMN photos_enabled INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE shelf ADD COLUMN thumbnail_size INTEGER NOT NULL DEFAULT 200`,
 }
 
 // deferRollback is used with defer to rollback a transaction.
@@ -632,6 +648,12 @@ func (s *Store) ListItemsByContainer(ctx context.Context, containerID int64) (*m
 			return nil, fmt.Errorf("get item %d: %w", itemID, err)
 		}
 		if item != nil {
+			// Attach photo if one exists for this item
+			photo, err := s.GetPhotoByItemID(ctx, item.ID)
+			if err != nil {
+				return nil, fmt.Errorf("get photo for item %d: %w", item.ID, err)
+			}
+			item.Photo = photo
 			items = append(items, *item)
 		}
 	}
@@ -1517,4 +1539,147 @@ func (s *Store) GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("store encryption key: %w", err)
 	}
 	return key, nil
+}
+
+// --- Photo CRUD ---
+
+// InsertPhoto inserts a new photo record and sets p.ID from the result.
+func (s *Store) InsertPhoto(ctx context.Context, p *model.Photo) error {
+	res, err := s.conn.ExecContext(ctx,
+		`INSERT INTO photo (uuid, item_id, original_filename, content_type, ext, file_size, crop_mode)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		p.UUID, p.ItemID, p.OriginalFilename, p.ContentType, p.Ext, p.FileSize, p.CropMode)
+	if err != nil {
+		return fmt.Errorf("insert photo: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("photo last insert id: %w", err)
+	}
+	p.ID = id
+	return nil
+}
+
+// GetPhotoByUUID retrieves a photo by its UUID. Returns nil, nil if not found.
+func (s *Store) GetPhotoByUUID(ctx context.Context, uuid string) (*model.Photo, error) {
+	var p model.Photo
+	err := s.conn.QueryRowContext(ctx,
+		`SELECT id, uuid, item_id, original_filename, content_type, ext, file_size, crop_mode, uploaded_at
+		 FROM photo WHERE uuid = ?`, uuid).
+		Scan(&p.ID, &p.UUID, &p.ItemID, &p.OriginalFilename, &p.ContentType, &p.Ext, &p.FileSize, &p.CropMode, &p.UploadedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get photo by uuid: %w", err)
+	}
+	p.ThumbURL = "/api/photos/" + p.UUID + "/thumb"
+	p.FullURL = "/api/photos/" + p.UUID + "/full"
+	return &p, nil
+}
+
+// GetPhotoByItemID retrieves the photo for an item. Returns nil, nil if no photo exists.
+func (s *Store) GetPhotoByItemID(ctx context.Context, itemID int64) (*model.Photo, error) {
+	var p model.Photo
+	err := s.conn.QueryRowContext(ctx,
+		`SELECT id, uuid, item_id, original_filename, content_type, ext, file_size, crop_mode, uploaded_at
+		 FROM photo WHERE item_id = ?`, itemID).
+		Scan(&p.ID, &p.UUID, &p.ItemID, &p.OriginalFilename, &p.ContentType, &p.Ext, &p.FileSize, &p.CropMode, &p.UploadedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get photo by item_id: %w", err)
+	}
+	p.ThumbURL = "/api/photos/" + p.UUID + "/thumb"
+	p.FullURL = "/api/photos/" + p.UUID + "/full"
+	return &p, nil
+}
+
+// DeletePhoto removes a photo record by UUID.
+func (s *Store) DeletePhoto(ctx context.Context, uuid string) error {
+	_, err := s.conn.ExecContext(ctx, "DELETE FROM photo WHERE uuid = ?", uuid)
+	if err != nil {
+		return fmt.Errorf("delete photo: %w", err)
+	}
+	return nil
+}
+
+// ListAllPhotos returns all photo records.
+func (s *Store) ListAllPhotos(ctx context.Context) ([]model.Photo, error) {
+	rows, err := s.conn.QueryContext(ctx,
+		`SELECT id, uuid, item_id, original_filename, content_type, ext, file_size, crop_mode, uploaded_at
+		 FROM photo ORDER BY uploaded_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list photos: %w", err)
+	}
+	defer rows.Close()
+
+	var photos []model.Photo
+	for rows.Next() {
+		var p model.Photo
+		if err := rows.Scan(&p.ID, &p.UUID, &p.ItemID, &p.OriginalFilename, &p.ContentType, &p.Ext, &p.FileSize, &p.CropMode, &p.UploadedAt); err != nil {
+			return nil, fmt.Errorf("scan photo: %w", err)
+		}
+		p.ThumbURL = "/api/photos/" + p.UUID + "/thumb"
+		p.FullURL = "/api/photos/" + p.UUID + "/full"
+		photos = append(photos, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate photos: %w", err)
+	}
+	return photos, nil
+}
+
+// IsPhotosEnabled returns whether the photo feature is enabled.
+func (s *Store) IsPhotosEnabled(ctx context.Context) (bool, error) {
+	var enabled int
+	err := s.conn.QueryRowContext(ctx, "SELECT photos_enabled FROM shelf LIMIT 1").Scan(&enabled)
+	if err != nil {
+		return false, fmt.Errorf("get photos_enabled: %w", err)
+	}
+	return enabled != 0, nil
+}
+
+// SetPhotosEnabled toggles the photo feature on or off.
+func (s *Store) SetPhotosEnabled(ctx context.Context, enabled bool) error {
+	val := 0
+	if enabled {
+		val = 1
+	}
+	_, err := s.conn.ExecContext(ctx,
+		"UPDATE shelf SET photos_enabled = ? WHERE id = (SELECT id FROM shelf LIMIT 1)", val)
+	if err != nil {
+		return fmt.Errorf("set photos_enabled: %w", err)
+	}
+	return nil
+}
+
+// GetThumbnailSize returns the configured thumbnail size in pixels.
+func (s *Store) GetThumbnailSize(ctx context.Context) (int, error) {
+	var size int
+	err := s.conn.QueryRowContext(ctx, "SELECT thumbnail_size FROM shelf LIMIT 1").Scan(&size)
+	if err != nil {
+		return 0, fmt.Errorf("get thumbnail_size: %w", err)
+	}
+	return size, nil
+}
+
+// SetThumbnailSize updates the configured thumbnail size in pixels.
+func (s *Store) SetThumbnailSize(ctx context.Context, size int) error {
+	_, err := s.conn.ExecContext(ctx,
+		"UPDATE shelf SET thumbnail_size = ? WHERE id = (SELECT id FROM shelf LIMIT 1)", size)
+	if err != nil {
+		return fmt.Errorf("set thumbnail_size: %w", err)
+	}
+	return nil
+}
+
+// UpdatePhotoCropMode changes the crop_mode on a photo record.
+func (s *Store) UpdatePhotoCropMode(ctx context.Context, uuid, mode string) error {
+	_, err := s.conn.ExecContext(ctx, "UPDATE photo SET crop_mode = ? WHERE uuid = ?", mode, uuid)
+	if err != nil {
+		return fmt.Errorf("update photo crop_mode: %w", err)
+	}
+	return nil
 }

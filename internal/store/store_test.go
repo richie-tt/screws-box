@@ -1627,3 +1627,159 @@ func TestDeleteUsedTagFails(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, tags, 1)
 }
+
+// --- Photo store tests ---
+
+func TestPhotoInsertAndGetByUUID(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	p := &model.Photo{
+		UUID:             "test-uuid-001",
+		ItemID:           &itemID,
+		OriginalFilename: "bolt.jpg",
+		ContentType:      "image/jpeg",
+		Ext:              ".jpg",
+		FileSize:         12345,
+		CropMode:         "fit",
+	}
+	require.NoError(t, s.InsertPhoto(ctx, p))
+	assert.NotZero(t, p.ID, "InsertPhoto should set p.ID")
+
+	got, err := s.GetPhotoByUUID(ctx, "test-uuid-001")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "test-uuid-001", got.UUID)
+	assert.Equal(t, &itemID, got.ItemID)
+	assert.Equal(t, "bolt.jpg", got.OriginalFilename)
+	assert.Equal(t, "image/jpeg", got.ContentType)
+	assert.Equal(t, ".jpg", got.Ext)
+	assert.Equal(t, int64(12345), got.FileSize)
+	assert.Equal(t, "fit", got.CropMode)
+	assert.NotEmpty(t, got.UploadedAt)
+	assert.Equal(t, "/api/photos/test-uuid-001/thumb", got.ThumbURL)
+	assert.Equal(t, "/api/photos/test-uuid-001/full", got.FullURL)
+}
+
+func TestPhotoGetByItemID(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	// No photo yet
+	got, err := s.GetPhotoByItemID(ctx, itemID)
+	require.NoError(t, err)
+	assert.Nil(t, got, "should return nil when item has no photo")
+
+	// Insert photo
+	p := &model.Photo{
+		UUID:        "test-uuid-002",
+		ItemID:      &itemID,
+		ContentType: "image/png",
+		Ext:         ".png",
+		CropMode:    "fit",
+	}
+	require.NoError(t, s.InsertPhoto(ctx, p))
+
+	got, err = s.GetPhotoByItemID(ctx, itemID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "test-uuid-002", got.UUID)
+}
+
+func TestPhotoDelete(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	p := &model.Photo{
+		UUID:        "test-uuid-003",
+		ItemID:      &itemID,
+		ContentType: "image/jpeg",
+		Ext:         ".jpg",
+		CropMode:    "fit",
+	}
+	require.NoError(t, s.InsertPhoto(ctx, p))
+
+	require.NoError(t, s.DeletePhoto(ctx, "test-uuid-003"))
+
+	got, err := s.GetPhotoByUUID(ctx, "test-uuid-003")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestPhotoListAll(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	p1 := &model.Photo{UUID: "uuid-a", ItemID: &itemID, ContentType: "image/jpeg", Ext: ".jpg", CropMode: "fit"}
+	p2 := &model.Photo{UUID: "uuid-b", ItemID: &itemID, ContentType: "image/png", Ext: ".png", CropMode: "crop"}
+	require.NoError(t, s.InsertPhoto(ctx, p1))
+	require.NoError(t, s.InsertPhoto(ctx, p2))
+
+	photos, err := s.ListAllPhotos(ctx)
+	require.NoError(t, err)
+	assert.Len(t, photos, 2)
+}
+
+func TestPhotoIsPhotosEnabled(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	enabled, err := s.IsPhotosEnabled(ctx)
+	require.NoError(t, err)
+	assert.False(t, enabled, "photos should be disabled by default")
+
+	require.NoError(t, s.SetPhotosEnabled(ctx, true))
+	enabled, err = s.IsPhotosEnabled(ctx)
+	require.NoError(t, err)
+	assert.True(t, enabled)
+
+	require.NoError(t, s.SetPhotosEnabled(ctx, false))
+	enabled, err = s.IsPhotosEnabled(ctx)
+	require.NoError(t, err)
+	assert.False(t, enabled)
+}
+
+func TestPhotoGetThumbnailSize(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	size, err := s.GetThumbnailSize(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 200, size, "default thumbnail size should be 200")
+
+	require.NoError(t, s.SetThumbnailSize(ctx, 150))
+	size, err = s.GetThumbnailSize(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 150, size)
+}
+
+func TestPhotoUpdateCropMode(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	containerID := getTestContainerID(t, s)
+	itemID := insertTestItem(t, s, containerID, "M6 Bolt")
+
+	p := &model.Photo{
+		UUID:        "test-uuid-crop",
+		ItemID:      &itemID,
+		ContentType: "image/jpeg",
+		Ext:         ".jpg",
+		CropMode:    "fit",
+	}
+	require.NoError(t, s.InsertPhoto(ctx, p))
+
+	require.NoError(t, s.UpdatePhotoCropMode(ctx, "test-uuid-crop", "crop"))
+
+	got, err := s.GetPhotoByUUID(ctx, "test-uuid-crop")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "crop", got.CropMode)
+}

@@ -55,6 +55,7 @@ type GridData struct {
 	AuthUser        string
 	AuthHasPassword bool
 	DisplayName     string
+	PhotosEnabled   bool
 }
 
 // AuthSettings holds authentication configuration.
@@ -104,6 +105,21 @@ type Cell struct {
 	ContainerID int64
 }
 
+// Photo represents a photo stored in the photo storage backend.
+type Photo struct {
+	ID               int64  `json:"id"`
+	UUID             string `json:"uuid"`
+	ItemID           *int64 `json:"item_id"`
+	OriginalFilename string `json:"original_filename"`
+	ContentType      string `json:"content_type"`
+	Ext              string `json:"ext"`
+	FileSize         int64  `json:"file_size"`
+	CropMode         string `json:"crop_mode"`
+	UploadedAt       string `json:"uploaded_at"`
+	ThumbURL         string `json:"thumb_url,omitempty"`
+	FullURL          string `json:"full_url,omitempty"`
+}
+
 // ItemResponse is the API-ready representation of an item.
 type ItemResponse struct {
 	ID             int64    `json:"id"`
@@ -112,6 +128,7 @@ type ItemResponse struct {
 	Name           string   `json:"name"`
 	Description    *string  `json:"description"`
 	Tags           []string `json:"tags"`
+	Photo          *Photo   `json:"photo,omitempty"`
 	CreatedAt      string   `json:"created_at"`
 	UpdatedAt      string   `json:"updated_at"`
 }

@@ -51,6 +51,17 @@ type StoreService interface {
 	ExportAllData(ctx context.Context) (*model.ExportData, error)
 	ImportAllData(ctx context.Context, data *model.ExportData) error
 	FindDuplicates(ctx context.Context) ([]model.DuplicateGroup, error)
+	// Photo methods
+	InsertPhoto(ctx context.Context, p *model.Photo) error
+	GetPhotoByUUID(ctx context.Context, uuid string) (*model.Photo, error)
+	GetPhotoByItemID(ctx context.Context, itemID int64) (*model.Photo, error)
+	DeletePhoto(ctx context.Context, uuid string) error
+	ListAllPhotos(ctx context.Context) ([]model.Photo, error)
+	IsPhotosEnabled(ctx context.Context) (bool, error)
+	SetPhotosEnabled(ctx context.Context, enabled bool) error
+	GetThumbnailSize(ctx context.Context) (int, error)
+	SetThumbnailSize(ctx context.Context, size int) error
+	UpdatePhotoCropMode(ctx context.Context, uuid, mode string) error
 }
 
 // --- Healthcheck ---
@@ -234,6 +245,9 @@ func (srv *Server) handleGrid() http.HandlerFunc {
 			data = &model.GridData{Error: "Cannot load shelf -- check server logs."}
 		}
 		data.DisplayName = srv.getDisplayName(r)
+		if photosEnabled, pErr := srv.store.IsPhotosEnabled(r.Context()); pErr == nil {
+			data.PhotosEnabled = photosEnabled
+		}
 
 		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
 			"layout.html", "grid.html")
@@ -268,6 +282,8 @@ type SettingsData struct {
 	Sessions         []SessionInfo
 	CurrentSessionID string
 	SessionTTL       int64 // TTL in seconds for JS expiry calculation
+	PhotosEnabled    bool
+	ThumbnailSize    int
 }
 
 func (srv *Server) handleSettings() http.HandlerFunc {
@@ -313,6 +329,14 @@ func (srv *Server) handleSettings() http.HandlerFunc {
 		settingsData.Sessions = sessionInfos
 		settingsData.CurrentSessionID = currentSessID
 		settingsData.SessionTTL = int64(srv.sessions.TTL().Seconds())
+
+		// Populate photo settings
+		if photosEnabled, err := srv.store.IsPhotosEnabled(r.Context()); err == nil {
+			settingsData.PhotosEnabled = photosEnabled
+		}
+		if thumbSize, err := srv.store.GetThumbnailSize(r.Context()); err == nil {
+			settingsData.ThumbnailSize = thumbSize
+		}
 
 		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
 			"layout.html", "settings.html")
