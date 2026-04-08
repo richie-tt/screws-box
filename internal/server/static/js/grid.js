@@ -11,6 +11,10 @@
   let expandedCell = null;   // the grid cell that was clicked
   let expandedPanel = null;  // the floating overlay panel element
 
+  // --- Photo feature gate ---
+  var photosEnabledEl = document.querySelector('[data-photos-enabled]');
+  var PHOTOS_ON = photosEnabledEl && photosEnabledEl.getAttribute('data-photos-enabled') === 'true';
+
   // --- Section 2: Utility functions ---
 
   function getCSRFToken() {
@@ -149,6 +153,9 @@
     var content = document.createElement('div');
     content.className = 'panel-body';
     panel.appendChild(content);
+
+    // Setup drag-and-drop for photo uploads on panel
+    setupPanelDragDrop(panel);
 
     // D-08: Trigger slide-down animation via requestAnimationFrame
     requestAnimationFrame(function () {
@@ -297,6 +304,82 @@
           tagsRow.appendChild(chip);
         });
         li.appendChild(tagsRow);
+      }
+
+      // Photo section (gated behind PHOTOS_ON)
+      if (PHOTOS_ON) {
+        if (item.photo && item.photo.thumb_url) {
+          // Item has a photo: show thumbnail with action overlay
+          var photoWrap = document.createElement('div');
+          photoWrap.className = 'item-photo-wrap';
+
+          var photoDiv = document.createElement('div');
+          photoDiv.className = 'item-photo';
+          var photoImg = document.createElement('img');
+          photoImg.setAttribute('src', item.photo.thumb_url);
+          photoImg.setAttribute('alt', item.photo.original_filename);
+          photoImg.addEventListener('click', function(e) {
+            e.stopPropagation();
+            showLightbox(item.photo.uuid, item.photo.original_filename, item.photo.uploaded_at);
+          });
+          photoDiv.appendChild(photoImg);
+          photoWrap.appendChild(photoDiv);
+
+          // Action buttons overlay (Replace / Remove)
+          var photoActions = document.createElement('div');
+          photoActions.className = 'item-photo-actions';
+
+          var replaceBtn = document.createElement('button');
+          replaceBtn.type = 'button';
+          replaceBtn.className = 'btn-replace';
+          replaceBtn.textContent = 'Replace photo';
+          replaceBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            triggerPhotoUpload(item.id);
+          });
+          photoActions.appendChild(replaceBtn);
+
+          var removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'btn-remove';
+          removeBtn.textContent = 'Remove photo';
+          removeBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            removeItemPhoto(item.id, item.photo.uuid);
+          });
+          photoActions.appendChild(removeBtn);
+
+          photoWrap.appendChild(photoActions);
+          li.appendChild(photoWrap);
+        } else {
+          // No photo: show upload button
+          var uploadBtn = document.createElement('button');
+          uploadBtn.type = 'button';
+          uploadBtn.className = 'btn-upload-photo';
+
+          var svgNS = 'http://www.w3.org/2000/svg';
+          var svgEl = document.createElementNS(svgNS, 'svg');
+          svgEl.setAttribute('viewBox', '0 0 24 24');
+          svgEl.setAttribute('fill', 'none');
+          svgEl.setAttribute('stroke', 'currentColor');
+          svgEl.setAttribute('stroke-width', '2');
+          var svgPath = document.createElementNS(svgNS, 'path');
+          svgPath.setAttribute('d', 'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z');
+          svgEl.appendChild(svgPath);
+          var svgCircle = document.createElementNS(svgNS, 'circle');
+          svgCircle.setAttribute('cx', '12');
+          svgCircle.setAttribute('cy', '13');
+          svgCircle.setAttribute('r', '4');
+          svgEl.appendChild(svgCircle);
+          uploadBtn.appendChild(svgEl);
+          uploadBtn.appendChild(document.createTextNode(' Upload photo'));
+
+          uploadBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            triggerPhotoUpload(item.id);
+          });
+          li.appendChild(uploadBtn);
+        }
       }
 
       ul.appendChild(li);
@@ -905,6 +988,281 @@
   function findCell(containerId) {
     return document.querySelector('.grid-cell[data-container-id="' + containerId + '"]');
   }
+
+  // --- Section 8b: Photo upload, lightbox, drag-and-drop ---
+
+  function formatDate(isoString) {
+    var d = new Date(isoString);
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function triggerPhotoUpload(itemId) {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png';
+    input.addEventListener('change', function() {
+      for (var i = 0; i < input.files.length; i++) {
+        uploadFile(input.files[i], itemId);
+      }
+    });
+    input.click();
+  }
+
+  function uploadFile(file, itemId) {
+    if (file.size > 10 * 1024 * 1024) {
+      showUploadError(itemId, 'File exceeds the 10 MB limit.');
+      return;
+    }
+
+    showUploadProgress(itemId, file.name);
+
+    var formData = new FormData();
+    formData.append('photo', file);
+    if (itemId) {
+      formData.append('item_id', String(itemId));
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener('progress', function(e) {
+      if (e.lengthComputable) {
+        updateUploadProgress(itemId, Math.round((e.loaded / e.total) * 100));
+      }
+    });
+    xhr.addEventListener('load', function() {
+      if (xhr.status === 201) {
+        var photo = JSON.parse(xhr.responseText);
+        onUploadSuccess(itemId, photo);
+      } else {
+        var errMsg = 'Upload failed. Please try again.';
+        try { errMsg = JSON.parse(xhr.responseText).error || errMsg; } catch(ex) {}
+        showUploadError(itemId, errMsg);
+      }
+    });
+    xhr.addEventListener('error', function() {
+      showUploadError(itemId, 'Upload failed. Please try again.');
+    });
+
+    xhr.open('POST', '/api/photos/upload');
+    xhr.setRequestHeader('X-CSRF-Token', getCSRFToken());
+    xhr.send(formData);
+  }
+
+  function showUploadProgress(itemId, filename) {
+    // Find the item card and add progress indicator
+    var cards = document.querySelectorAll('.item-card');
+    var targetCard = null;
+    // Look for the card that contains the upload button or photo for this item
+    if (expandedPanel) {
+      var allCards = expandedPanel.querySelectorAll('.item-card');
+      for (var i = 0; i < allCards.length; i++) {
+        // Remove any existing progress
+        var existing = allCards[i].querySelector('.upload-progress');
+        if (existing) existing.remove();
+      }
+      // We store itemId as a data attribute to find the right card
+      // For now, use a panel-level progress indicator
+    }
+
+    var progressDiv = document.createElement('div');
+    progressDiv.className = 'upload-progress';
+    progressDiv.setAttribute('data-upload-item', itemId || '');
+    var prog = document.createElement('progress');
+    prog.max = 100;
+    prog.value = 0;
+    prog.setAttribute('aria-label', 'Uploading ' + filename);
+    progressDiv.appendChild(prog);
+    var fnDiv = document.createElement('div');
+    fnDiv.className = 'upload-progress-filename';
+    fnDiv.textContent = filename;
+    progressDiv.appendChild(fnDiv);
+
+    if (expandedPanel) {
+      var body = expandedPanel.querySelector('.panel-body');
+      if (body) body.appendChild(progressDiv);
+    }
+  }
+
+  function updateUploadProgress(itemId, percent) {
+    if (!expandedPanel) return;
+    var sel = '.upload-progress[data-upload-item="' + (itemId || '') + '"] progress';
+    var prog = expandedPanel.querySelector(sel);
+    if (prog) prog.value = percent;
+  }
+
+  function onUploadSuccess(itemId, photo) {
+    // Remove progress indicator
+    if (expandedPanel) {
+      var prog = expandedPanel.querySelector('.upload-progress[data-upload-item="' + (itemId || '') + '"]');
+      if (prog) prog.remove();
+    }
+    // Refresh the panel to show the new photo
+    refreshCurrentPanel();
+  }
+
+  function showUploadError(itemId, message) {
+    if (expandedPanel) {
+      var prog = expandedPanel.querySelector('.upload-progress[data-upload-item="' + (itemId || '') + '"]');
+      if (prog) {
+        prog.classList.add('error');
+        var fnEl = prog.querySelector('.upload-progress-filename');
+        if (fnEl) fnEl.textContent = message;
+      } else {
+        // No progress element yet, create error display
+        var errDiv = document.createElement('div');
+        errDiv.className = 'upload-progress error';
+        var msgDiv = document.createElement('div');
+        msgDiv.className = 'upload-progress-filename';
+        msgDiv.textContent = message;
+        errDiv.appendChild(msgDiv);
+        var body = expandedPanel.querySelector('.panel-body');
+        if (body) body.appendChild(errDiv);
+      }
+    }
+  }
+
+  function removeItemPhoto(itemId, photoUUID) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('DELETE', '/api/photos/' + photoUUID + '/item');
+    xhr.setRequestHeader('X-CSRF-Token', getCSRFToken());
+    xhr.addEventListener('load', function() {
+      refreshCurrentPanel();
+    });
+    xhr.send();
+  }
+
+  function refreshCurrentPanel() {
+    if (!expandedCell || !expandedPanel) return;
+    var containerId = parseInt(expandedCell.dataset.containerId, 10);
+    var content = expandedPanel.querySelector('.panel-body');
+    if (!content) return;
+    apiCall('/api/containers/' + containerId + '/items').then(function(result) {
+      if (result.ok && result.data && result.data.items && result.data.items.length > 0) {
+        renderItemList(expandedCell, content, result.data.items, containerId);
+      } else {
+        renderAddForm(expandedCell, content, containerId);
+      }
+    });
+  }
+
+  function showLightbox(photoUUID, filename, uploadedAt) {
+    var overlay = document.createElement('div');
+    overlay.className = 'lightbox-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Photo viewer');
+
+    var img = document.createElement('img');
+    img.setAttribute('src', '/api/photos/' + photoUUID + '/full');
+    img.setAttribute('alt', filename);
+
+    var info = document.createElement('div');
+    info.className = 'lightbox-info';
+    info.textContent = filename + ' \u2014 Uploaded ' + formatDate(uploadedAt);
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'lightbox-close';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.textContent = '\u00D7';
+
+    overlay.appendChild(img);
+    overlay.appendChild(info);
+    overlay.appendChild(closeBtn);
+    document.body.appendChild(overlay);
+
+    function closeLB() {
+      overlay.remove();
+      document.removeEventListener('keydown', kh);
+    }
+    function kh(e) {
+      if (e.key === 'Escape') closeLB();
+    }
+    closeBtn.addEventListener('click', closeLB);
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeLB();
+    });
+    document.addEventListener('keydown', kh);
+    closeBtn.focus();
+  }
+
+  // Drag-and-drop setup for panel
+  function setupPanelDragDrop(panelEl) {
+    if (!PHOTOS_ON) return;
+
+    var overlay = document.createElement('div');
+    overlay.className = 'photo-drop-overlay';
+
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svgIcon = document.createElementNS(svgNS, 'svg');
+    svgIcon.setAttribute('width', '32');
+    svgIcon.setAttribute('height', '32');
+    svgIcon.setAttribute('viewBox', '0 0 24 24');
+    svgIcon.setAttribute('fill', 'none');
+    svgIcon.setAttribute('stroke', 'currentColor');
+    svgIcon.setAttribute('stroke-width', '2');
+    var uploadPath = document.createElementNS(svgNS, 'path');
+    uploadPath.setAttribute('d', 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4');
+    svgIcon.appendChild(uploadPath);
+    var uploadPolyline = document.createElementNS(svgNS, 'polyline');
+    uploadPolyline.setAttribute('points', '17 8 12 3 7 8');
+    svgIcon.appendChild(uploadPolyline);
+    var uploadLine = document.createElementNS(svgNS, 'line');
+    uploadLine.setAttribute('x1', '12');
+    uploadLine.setAttribute('y1', '3');
+    uploadLine.setAttribute('x2', '12');
+    uploadLine.setAttribute('y2', '15');
+    svgIcon.appendChild(uploadLine);
+    overlay.appendChild(svgIcon);
+
+    var dropText = document.createElement('span');
+    dropText.textContent = 'Drop photos here';
+    overlay.appendChild(dropText);
+
+    var dropHint = document.createElement('small');
+    dropHint.textContent = 'JPEG or PNG, up to 10 MB';
+    overlay.appendChild(dropHint);
+
+    panelEl.style.position = 'relative';
+    panelEl.appendChild(overlay);
+
+    var dragCounter = 0;
+
+    panelEl.addEventListener('dragenter', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter++;
+      overlay.classList.add('drag-active');
+    });
+    panelEl.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    panelEl.addEventListener('dragleave', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        overlay.classList.remove('drag-active');
+      }
+    });
+    panelEl.addEventListener('drop', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter = 0;
+      overlay.classList.remove('drag-active');
+      var files = e.dataTransfer.files;
+      for (var i = 0; i < files.length; i++) {
+        uploadFile(files[i], null);
+      }
+    });
+  }
+
+  // Prevent default drag behavior on document
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function(evt) {
+    document.addEventListener(evt, function(e) {
+      e.preventDefault();
+    });
+  });
 
   // --- Section 9: Unified Search ---
 
