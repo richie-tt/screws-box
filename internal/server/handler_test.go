@@ -1078,6 +1078,7 @@ func (m *mockStore) SetPhotosEnabled(_ context.Context, _ bool) error           
 func (m *mockStore) GetThumbnailSize(_ context.Context) (int, error)            { return 200, nil }
 func (m *mockStore) SetThumbnailSize(_ context.Context, _ int) error            { return nil }
 func (m *mockStore) UpdatePhotoCropMode(_ context.Context, _, _ string) error   { return nil }
+func (m *mockStore) UnlinkPhoto(_ context.Context, _ string) error              { return nil }
 
 func errStore() *mockStore {
 	dbErr := fmt.Errorf("database error")

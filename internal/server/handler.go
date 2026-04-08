@@ -62,6 +62,7 @@ type StoreService interface {
 	GetThumbnailSize(ctx context.Context) (int, error)
 	SetThumbnailSize(ctx context.Context, size int) error
 	UpdatePhotoCropMode(ctx context.Context, uuid, mode string) error
+	UnlinkPhoto(ctx context.Context, uuid string) error
 }
 
 // --- Healthcheck ---

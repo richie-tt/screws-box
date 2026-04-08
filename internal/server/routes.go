@@ -89,7 +89,24 @@ func (srv *Server) Router() http.Handler {
 				r.Get("/sessions", srv.handleListSessions())
 				r.Delete("/sessions", srv.handleRevokeAllOthers())
 				r.Delete("/sessions/{sessionID}", srv.handleRevokeSession())
+
+				// Photo settings (not feature-gated -- must work even when photos disabled)
+				r.Put("/shelf/photos-enabled", srv.handleSetPhotosEnabled())
+				r.Put("/shelf/thumbnail-size", srv.handleSetThumbnailSize())
 			})
+
+			// Photo routes (feature-gated)
+			r.Route("/api/photos", func(r chi.Router) {
+				r.Use(srv.requirePhotosEnabled)
+				r.Post("/upload", srv.handlePhotoUpload())
+				r.Get("/{uuid}/full", srv.handleServePhoto(false))
+				r.Get("/{uuid}/thumb", srv.handleServePhoto(true))
+				r.Delete("/{uuid}/item", srv.handleUnlinkPhoto())
+				r.Post("/regenerate", srv.handleRegenerateThumbnails())
+			})
+
+			// Images page (feature-gated)
+			r.With(srv.requirePhotosEnabled).Get("/images", srv.handleImagesPage())
 		})
 	})
 

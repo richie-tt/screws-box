@@ -1683,3 +1683,12 @@ func (s *Store) UpdatePhotoCropMode(ctx context.Context, uuid, mode string) erro
 	}
 	return nil
 }
+
+// UnlinkPhoto sets item_id to NULL on a photo record, detaching it from its item.
+func (s *Store) UnlinkPhoto(ctx context.Context, uuid string) error {
+	_, err := s.conn.ExecContext(ctx, "UPDATE photo SET item_id = NULL WHERE uuid = ?", uuid)
+	if err != nil {
+		return fmt.Errorf("unlink photo: %w", err)
+	}
+	return nil
+}
