@@ -30,7 +30,7 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.Store) {
 	t.Cleanup(func() { memStore.Close() })
 	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
 
-	srv := NewServer(s, mgr)
+	srv := NewServer(s, mgr, nil)
 	router := srv.Router()
 	return router, s
 }
@@ -1092,7 +1092,7 @@ func errStore() *mockStore {
 func errRouter() http.Handler {
 	ms := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
 	mgr := session.NewManager(ms, 1*time.Hour, "Memory")
-	srv := NewServer(errStore(), mgr)
+	srv := NewServer(errStore(), mgr, nil)
 	return srv.Router()
 }
 
@@ -1445,7 +1445,7 @@ func newTestServerWithMock(t *testing.T, store StoreService) *Server {
 	memStore := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
 	t.Cleanup(func() { memStore.Close() })
 	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
-	return NewServer(store, mgr)
+	return NewServer(store, mgr, nil)
 }
 
 func oidcEnabledStore() *mockStore {
@@ -1800,7 +1800,7 @@ func TestHandleDuplicates_StoreError(t *testing.T) {
 	t.Cleanup(func() { memStore.Close() })
 	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
 
-	srv := NewServer(s, mgr)
+	srv := NewServer(s, mgr, nil)
 	router := srv.Router()
 
 	// Close store to force error

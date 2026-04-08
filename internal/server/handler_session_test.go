@@ -28,7 +28,7 @@ func setupSessionTestRouter(t *testing.T) (http.Handler, *session.Manager, *sess
 	t.Cleanup(func() { memStore.Close() })
 	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
 
-	srv := NewServer(s, mgr)
+	srv := NewServer(s, mgr, nil)
 	router := srv.Router()
 	return router, mgr, memStore
 }

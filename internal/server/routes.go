@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"screws-box/internal/session"
+	"screws-box/internal/storage"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -14,11 +15,12 @@ import (
 type Server struct {
 	store    StoreService
 	sessions *session.Manager
+	photos   storage.PhotoStorage
 }
 
 // NewServer creates a Server with the given dependencies.
-func NewServer(store StoreService, sessions *session.Manager) *Server {
-	return &Server{store: store, sessions: sessions}
+func NewServer(store StoreService, sessions *session.Manager, photos storage.PhotoStorage) *Server {
+	return &Server{store: store, sessions: sessions, photos: photos}
 }
 
 // Router creates the chi router with all routes.
