@@ -1253,3 +1253,152 @@ mark {
 .images-upload-list {
   margin-bottom: var(--space-lg);
 }
+
+/* ========================================
+   Phase 26: Photo Picker Modal & Button Pair
+   ======================================== */
+
+/* Button pair container (no-photo state) */
+.item-photo-buttons {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+.item-photo-buttons button {
+  flex: 1;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 150ms ease, background-color 150ms ease;
+}
+
+/* Link existing button (outline style) */
+.btn-link-photo {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+.btn-link-photo:hover {
+  background: var(--bg-inset);
+}
+.btn-link-photo svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Photo picker modal overlay */
+.photo-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: lightbox-in 200ms ease;
+}
+
+/* Photo picker inner panel */
+.photo-picker-panel {
+  max-width: 720px;
+  width: 90vw;
+  max-height: 80vh;
+  background: var(--bg-raised);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+}
+
+/* Picker header */
+.photo-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+.photo-picker-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.photo-picker-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+.photo-picker-close:hover {
+  color: var(--text);
+}
+
+/* Picker thumbnail grid */
+.photo-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-sm);
+}
+
+/* Picker card */
+.photo-picker-card {
+  background: var(--bg-inset);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  padding: var(--space-xs);
+  cursor: pointer;
+  transition: border-color 150ms ease;
+}
+.photo-picker-card:hover {
+  border-color: var(--accent);
+}
+.photo-picker-card img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+/* Linked-item badge */
+.photo-picker-badge {
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  margin-top: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Disabled card (current item's photo) */
+.photo-picker-card.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.photo-picker-card.disabled:hover {
+  border-color: var(--border);
+}
+
+/* Picker empty state */
+.photo-picker-empty {
+  text-align: center;
+  padding: var(--space-xl);
+  color: var(--text-muted);
+}
