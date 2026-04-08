@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"screws-box/internal/storage"
 	"strings"
 	"testing"
-
-	"screws-box/internal/storage"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -63,7 +61,7 @@ func TestRetrieveNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := ls.Retrieve(ctx, "nonexistent", ".jpg")
-	assert.True(t, errors.Is(err, storage.ErrNotFound))
+	assert.ErrorIs(t, err, storage.ErrNotFound)
 }
 
 func TestDeleteRemovesFile(t *testing.T) {
@@ -158,7 +156,7 @@ func TestAtomicWriteCleanup(t *testing.T) {
 
 	// Walk the storage directory and check for .tmp files
 	var tmpFiles []string
-	err = filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(baseDir, func(path string, _ os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

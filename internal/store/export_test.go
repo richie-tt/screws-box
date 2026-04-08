@@ -57,7 +57,7 @@ func TestExportAllData(t *testing.T) {
 	assert.Equal(t, 10, data.Shelf.Cols)
 
 	// Containers — we have 50 (5x10), but only 2 have items. All are exported.
-	assert.Equal(t, 50, len(data.Shelf.Containers))
+	assert.Len(t, data.Shelf.Containers, 50)
 
 	// Find containers with items.
 	var withItems []model.ExportContainer
@@ -66,13 +66,13 @@ func TestExportAllData(t *testing.T) {
 			withItems = append(withItems, c)
 		}
 	}
-	assert.Equal(t, 2, len(withItems))
+	assert.Len(t, withItems, 2)
 
 	// Container at (1,1) = label "1A"
 	c1 := findExportContainer(data.Shelf.Containers, 1, 1)
 	require.NotNil(t, c1, "container at (1,1) not found")
 	assert.Equal(t, "1A", c1.Label)
-	assert.Equal(t, 2, len(c1.Items))
+	assert.Len(t, c1.Items, 2)
 	// Items sorted by name
 	assert.Equal(t, "M3x10", c1.Items[0].Name)
 	assert.Equal(t, "M4x12", c1.Items[1].Name)
@@ -86,7 +86,7 @@ func TestExportAllData(t *testing.T) {
 	c2 := findExportContainer(data.Shelf.Containers, 2, 1)
 	require.NotNil(t, c2, "container at (2,1) not found")
 	assert.Equal(t, "2A", c2.Label)
-	assert.Equal(t, 1, len(c2.Items))
+	assert.Len(t, c2.Items, 1)
 	assert.Equal(t, "Washer M3", c2.Items[0].Name)
 	assert.Equal(t, []string{"metric", "washer"}, c2.Items[0].Tags)
 
@@ -109,7 +109,7 @@ func TestExportAllDataEmpty(t *testing.T) {
 	assert.Equal(t, 5, data.Shelf.Rows)
 	assert.Equal(t, 10, data.Shelf.Cols)
 	// All 50 containers exist but have no items.
-	assert.Equal(t, 50, len(data.Shelf.Containers))
+	assert.Len(t, data.Shelf.Containers, 50)
 	for _, c := range data.Shelf.Containers {
 		assert.Empty(t, c.Items)
 		assert.NotNil(t, c.Items)
@@ -157,18 +157,18 @@ func TestImportAllData(t *testing.T) {
 	assert.Equal(t, 4, exported.Shelf.Cols)
 
 	// After import, only the containers from the import data exist.
-	assert.Equal(t, 2, len(exported.Shelf.Containers))
+	assert.Len(t, exported.Shelf.Containers, 2)
 
 	c1 := findExportContainer(exported.Shelf.Containers, 1, 1)
 	require.NotNil(t, c1)
-	assert.Equal(t, 1, len(c1.Items))
+	assert.Len(t, c1.Items, 1)
 	assert.Equal(t, "Nut M5", c1.Items[0].Name)
 	assert.Equal(t, []string{"metric", "nut"}, c1.Items[0].Tags)
 
 	// Old items should be gone.
 	items, err := s.ListAllItems(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(items))
+	assert.Len(t, items, 1)
 }
 
 func TestImportAllDataRollback(t *testing.T) {
@@ -217,7 +217,7 @@ func TestImportAllDataRollback(t *testing.T) {
 	}
 
 	err = s.ImportAllData(ctx, badData2)
-	assert.Error(t, err, "duplicate container positions should cause error")
+	require.Error(t, err, "duplicate container positions should cause error")
 
 	// Verify existing data is unchanged.
 	after, err := s.ExportAllData(ctx)
@@ -225,7 +225,7 @@ func TestImportAllDataRollback(t *testing.T) {
 	assert.Equal(t, before.Shelf.Name, after.Shelf.Name)
 	assert.Equal(t, before.Shelf.Rows, after.Shelf.Rows)
 	assert.Equal(t, before.Shelf.Cols, after.Shelf.Cols)
-	assert.Equal(t, len(before.Shelf.Containers), len(after.Shelf.Containers))
+	assert.Len(t, after.Shelf.Containers, len(before.Shelf.Containers))
 }
 
 func TestImportInvalidVersion(t *testing.T) {
@@ -303,7 +303,7 @@ func TestImportTagDeduplication(t *testing.T) {
 
 	c := findExportContainer(exported.Shelf.Containers, 1, 1)
 	require.NotNil(t, c)
-	assert.Equal(t, 2, len(c.Items))
+	assert.Len(t, c.Items, 2)
 	// Both should have "shared" tag.
 	for _, item := range c.Items {
 		assert.Contains(t, item.Tags, "shared")
@@ -311,7 +311,7 @@ func TestImportTagDeduplication(t *testing.T) {
 }
 
 // findExportContainer finds a container by col and row in a slice.
-func findExportContainer(containers []model.ExportContainer, col, row int) *model.ExportContainer {
+func findExportContainer(containers []model.ExportContainer, col, row int) *model.ExportContainer { //nolint:unparam // row kept explicit for test readability
 	for i := range containers {
 		if containers[i].Col == col && containers[i].Row == row {
 			return &containers[i]

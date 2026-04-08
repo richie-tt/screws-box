@@ -91,7 +91,7 @@ func (m *Manager) CreateWithMethod(w http.ResponseWriter, r *http.Request, usern
 func (m *Manager) Destroy(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(CookieName)
 	if err == nil {
-		m.store.Delete(r.Context(), c.Value)
+		_ = m.store.Delete(r.Context(), c.Value)
 	}
 	for _, sec := range []bool{false, true} {
 		http.SetCookie(w, &http.Cookie{
@@ -116,7 +116,7 @@ func (m *Manager) GetUser(r *http.Request) string {
 	if err != nil || sess == nil {
 		return ""
 	}
-	m.store.Touch(r.Context(), c.Value)
+	_ = m.store.Touch(r.Context(), c.Value)
 	return sess.Username
 }
 
@@ -130,7 +130,7 @@ func (m *Manager) GetSession(r *http.Request) *Session {
 	if err != nil || sess == nil {
 		return nil
 	}
-	m.store.Touch(r.Context(), c.Value)
+	_ = m.store.Touch(r.Context(), c.Value)
 	return sess
 }
 

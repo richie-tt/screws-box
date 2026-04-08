@@ -1392,7 +1392,7 @@ func TestFindDuplicatesDifferentTags(t *testing.T) {
 
 	groups, err := s.FindDuplicates(ctx)
 	require.NoError(t, err)
-	assert.Len(t, groups, 0)
+	assert.Empty(t, groups)
 }
 
 func TestFindDuplicatesTagless(t *testing.T) {
@@ -1409,7 +1409,7 @@ func TestFindDuplicatesTagless(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, groups, 1)
 	assert.Equal(t, 2, groups[0].Count)
-	assert.Len(t, groups[0].Tags, 0)
+	assert.Empty(t, groups[0].Tags)
 }
 
 func TestFindDuplicatesNone(t *testing.T) {
@@ -1424,7 +1424,7 @@ func TestFindDuplicatesNone(t *testing.T) {
 
 	groups, err := s.FindDuplicates(ctx)
 	require.NoError(t, err)
-	assert.Len(t, groups, 0)
+	assert.Empty(t, groups)
 }
 
 func TestFindDuplicatesSorted(t *testing.T) {
@@ -1480,7 +1480,7 @@ func TestFindDuplicatesSameContainer(t *testing.T) {
 
 	groups, err := s.FindDuplicates(ctx)
 	require.NoError(t, err)
-	assert.Len(t, groups, 0)
+	assert.Empty(t, groups)
 }
 
 func TestListTagsWithCount(t *testing.T) {
@@ -1606,7 +1606,7 @@ func TestDeleteUnusedTag(t *testing.T) {
 
 	tags, err = s.ListTags(ctx, "")
 	require.NoError(t, err)
-	assert.Len(t, tags, 0)
+	assert.Empty(t, tags)
 }
 
 func TestDeleteUsedTagFails(t *testing.T) {
@@ -1619,8 +1619,7 @@ func TestDeleteUsedTagFails(t *testing.T) {
 	linkItemTag(t, s, itemID, tagID)
 
 	err := s.DeleteUnusedTag(ctx, tagID)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrTagInUse)
+	require.ErrorIs(t, err, ErrTagInUse)
 
 	// Tag should still exist
 	tags, err := s.ListTags(ctx, "")

@@ -1580,9 +1580,10 @@ func TestOIDCStartDisabled(t *testing.T) {
 // --- Tag management handler tests ---
 
 // createTaggedItem creates an item with given tags via the API and returns the item.
-func createTaggedItem(t *testing.T, router http.Handler, name string, containerID int64, tags []string) model.ItemResponse {
+func createTaggedItem(t *testing.T, router http.Handler, name string, containerID int64, tags []string) model.ItemResponse { //nolint:unparam // containerID kept explicit for test readability
 	t.Helper()
-	tagsJSON, _ := json.Marshal(tags)
+	tagsJSON, err := json.Marshal(tags)
+	require.NoError(t, err)
 	body := fmt.Sprintf(`{"name":%q,"container_id":%d,"tags":%s}`, name, containerID, tagsJSON)
 	req := httptest.NewRequest(http.MethodPost, "/api/items", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -1787,7 +1788,7 @@ func TestHandleDuplicates_Empty(t *testing.T) {
 
 	var groups []model.DuplicateGroup
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&groups))
-	assert.Len(t, groups, 0)
+	assert.Empty(t, groups)
 }
 
 func TestHandleDuplicates_StoreError(t *testing.T) {

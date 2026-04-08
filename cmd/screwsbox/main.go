@@ -12,6 +12,7 @@ import (
 	"screws-box/internal/session"
 	"screws-box/internal/storage"
 	"screws-box/internal/store"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -66,11 +67,11 @@ func parseSessionTTL() time.Duration {
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil {
-		slog.Warn("invalid SESSION_TTL, using default 24h", "value", raw, "err", err)
+		slog.Warn("invalid SESSION_TTL, using default 24h", "value", sanitizeLogValue(raw), "err", err) //nolint:gosec // env var, not user input
 		return 24 * time.Hour
 	}
 	if d <= 0 {
-		slog.Warn("SESSION_TTL must be positive, using default 24h", "value", raw)
+		slog.Warn("SESSION_TTL must be positive, using default 24h", "value", sanitizeLogValue(raw)) //nolint:gosec // env var, not user input
 		return 24 * time.Hour
 	}
 	return d
@@ -101,8 +102,7 @@ func run() error {
 	if redisURL != "" {
 		rs, err := session.NewRedisStore(redisURL, sessionTTL)
 		if err != nil {
-			slog.Error("failed to connect to Redis", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("connect to Redis: %w", err)
 		}
 		defer rs.Close()
 		storeType = "Redis"
@@ -122,7 +122,7 @@ func run() error {
 		photosDir = "./photos"
 	}
 	photoStorage := storage.NewLocalStorage(photosDir)
-	slog.Info("photos storage configured", "path", photosDir)
+	slog.Info("photos storage configured", "path", sanitizeLogValue(photosDir)) //nolint:gosec // env var, not user input
 
 	appSrv := server.NewServer(&s, sessionMgr, photoStorage)
 
@@ -140,21 +140,31 @@ func run() error {
 		IdleTimeout:       120 * time.Second,
 	}
 
+	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("server starting", "addr", addr) //nolint:gosec // G706: structured logging, value is a key-value pair not interpolated
+		slog.Info("server starting", "addr", addr) //nolint:gosec // addr from env/default, not user input
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server error", "err", err)
-			os.Exit(1)
+			errCh <- err
 		}
 	}()
 
-	<-ctx.Done()
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("server error: %w", err)
+	case <-ctx.Done():
+	}
 	slog.Info("shutting down gracefully")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	return srv.Shutdown(shutdownCtx)
+}
+
+// sanitizeLogValue strips newlines and control characters to prevent log injection.
+func sanitizeLogValue(s string) string {
+	r := strings.NewReplacer("\n", "", "\r", "", "\t", " ")
+	return r.Replace(s)
 }
 
 func seedOIDCFromEnv(s *store.Store) {
@@ -184,5 +194,5 @@ func seedOIDCFromEnv(s *store.Store) {
 		slog.Error("seed OIDC config from env", "err", err)
 		return
 	}
-	slog.Info("seeded OIDC config from environment variables", "issuer", issuer, "display_name", cfg.DisplayName)
+	slog.Info("seeded OIDC config from environment variables", "issuer", issuer, "display_name", cfg.DisplayName) //nolint:gosec // env vars, not user input
 }

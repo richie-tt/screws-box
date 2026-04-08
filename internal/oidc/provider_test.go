@@ -2,7 +2,6 @@ package oidc
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -16,9 +15,9 @@ func TestAuthURL_ContainsPKCE(t *testing.T) {
 	// Construct a Provider manually with a known oauth2 config (no discovery needed).
 	p := &Provider{
 		oauth2Cfg: &oauth2.Config{
-			ClientID:    "test-client",
+			ClientID:    "test-client", //nolint:gosec // G101: test fixture, not a real credential
 			RedirectURL: "http://localhost/callback",
-			Endpoint: oauth2.Endpoint{
+			Endpoint: oauth2.Endpoint{ //nolint:gosec // G101: test fixture, not real credentials
 				AuthURL:  "https://example.com/auth",
 				TokenURL: "https://example.com/token",
 			},
@@ -38,9 +37,9 @@ func TestAuthURL_ContainsPKCE(t *testing.T) {
 func TestAuthURL_ContainsScopes(t *testing.T) {
 	p := &Provider{
 		oauth2Cfg: &oauth2.Config{
-			ClientID:    "test-client",
+			ClientID:    "test-client", //nolint:gosec // G101: test fixture, not a real credential
 			RedirectURL: "http://localhost/callback",
-			Endpoint: oauth2.Endpoint{
+			Endpoint: oauth2.Endpoint{ //nolint:gosec // G101: test fixture, not real credentials
 				AuthURL:  "https://example.com/auth",
 				TokenURL: "https://example.com/token",
 			},
@@ -54,9 +53,9 @@ func TestAuthURL_ContainsScopes(t *testing.T) {
 	// URL-encoded scope should contain openid, email, profile
 	assert.Contains(t, url, "scope=")
 	// Scopes are space-separated and URL-encoded
-	assert.True(t, strings.Contains(url, "openid"), "URL should contain openid scope")
-	assert.True(t, strings.Contains(url, "email"), "URL should contain email scope")
-	assert.True(t, strings.Contains(url, "profile"), "URL should contain profile scope")
+	assert.Contains(t, url, "openid", "URL should contain openid scope")
+	assert.Contains(t, url, "email", "URL should contain email scope")
+	assert.Contains(t, url, "profile", "URL should contain profile scope")
 }
 
 func TestIDTokenClaims_Fields(t *testing.T) {

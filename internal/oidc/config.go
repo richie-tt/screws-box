@@ -15,9 +15,9 @@ const (
 
 // StateCookie holds the OIDC flow parameters encrypted in a cookie.
 type StateCookie struct {
-	State    string `json:"s"`
-	Nonce    string `json:"n"`
-	Verifier string `json:"v"`
+	State    string `json:"s"` //nolint:tagliatelle // short tags intentional for cookie size
+	Nonce    string `json:"n"` //nolint:tagliatelle // short tags intentional for cookie size
+	Verifier string `json:"v"` //nolint:tagliatelle // short tags intentional for cookie size
 }
 
 // GenerateState returns a cryptographically random 64-char hex string for OIDC state.
