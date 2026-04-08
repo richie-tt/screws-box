@@ -324,6 +324,15 @@ func (srv *Server) handleUnlinkPhoto() http.HandlerFunc {
 	}
 }
 
+// ImagesPageData is the view model for the images page template.
+type ImagesPageData struct {
+	ShelfName     string
+	PhotosEnabled bool
+	DisplayName   string
+	AuthEnabled   bool
+	Photos        []model.Photo
+}
+
 // handleImagesPage renders the images page template.
 func (srv *Server) handleImagesPage() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -335,13 +344,31 @@ func (srv *Server) handleImagesPage() http.HandlerFunc {
 			return
 		}
 
-		data := struct {
-			ShelfName   string
-			AuthEnabled bool
-			AuthUser    string
-			DisplayName string
-		}{
-			ShelfName: "Screws Box",
+		gridData, _ := srv.store.GetGridData()
+		shelfName := "Screws Box"
+		authEnabled := false
+		if gridData != nil {
+			shelfName = gridData.ShelfName
+			authEnabled = gridData.AuthEnabled
+		}
+
+		photos, err := srv.store.ListAllPhotos(r.Context())
+		if err != nil {
+			slog.Error("list photos failed", "err", err)
+			photos = nil
+		}
+		// Set computed URL fields on each photo.
+		for i := range photos {
+			photos[i].ThumbURL = "/api/photos/" + photos[i].UUID + "/thumb"
+			photos[i].FullURL = "/api/photos/" + photos[i].UUID + "/full"
+		}
+
+		data := ImagesPageData{
+			ShelfName:     shelfName,
+			PhotosEnabled: true, // Handler is behind requirePhotosEnabled, so always true here.
+			DisplayName:   srv.getDisplayName(r),
+			AuthEnabled:   authEnabled,
+			Photos:        photos,
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

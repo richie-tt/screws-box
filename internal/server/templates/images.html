@@ -1,7 +1,55 @@
 {{define "title"}}Images{{end}}
+
+{{define "extra_head"}}
+<link rel="stylesheet" href="/static/css/grid.css">
+{{end}}
+
+{{define "header_actions"}}
+<a href="/images" class="ghost" title="Images" style="font-weight:600">Images</a>
+<a href="/settings" class="ghost" title="Settings">Settings</a>
+{{if .DisplayName}}<span class="header-user">{{.DisplayName}}</span>{{end}}
+{{if .AuthEnabled}}
+<a href="/logout" class="ghost" aria-label="Sign out" title="Sign out">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 14H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h3"/>
+        <polyline points="10 11 14 8 10 5"/>
+        <line x1="14" y1="8" x2="6" y2="8"/>
+    </svg>
+</a>
+{{end}}
+{{end}}
+
 {{define "content"}}
-<main class="images-page">
-  <h2>Images</h2>
-  <div id="images-grid"></div>
-</main>
+<div class="images-page">
+  <div class="page-header">
+    <h2>Images</h2>
+  </div>
+
+  <div class="images-upload-area" id="images-upload-area">
+    <div class="upload-label">Upload photos</div>
+    <div class="upload-hint">JPEG or PNG, up to 10 MB</div>
+    <button type="button" id="images-upload-btn">Upload photos</button>
+    <input type="file" id="images-file-input" accept="image/jpeg,image/png" multiple style="display:none">
+  </div>
+
+  <div class="images-upload-list" id="images-upload-list"></div>
+
+  <div class="images-grid" id="images-grid">
+    {{range .Photos}}
+    <div class="images-card" data-uuid="{{.UUID}}" data-filename="{{.OriginalFilename}}" data-uploaded="{{.UploadedAt}}">
+      <img src="{{.ThumbURL}}" alt="{{.OriginalFilename}}" loading="lazy">
+      <div class="images-card-info">
+        <div class="images-card-filename">{{.OriginalFilename}}</div>
+        <div class="images-card-date">{{.UploadedAt}}</div>
+      </div>
+    </div>
+    {{else}}
+    <div class="images-empty">
+      <h3>No photos yet</h3>
+      <p>Upload photos from here or from any item's edit view.</p>
+    </div>
+    {{end}}
+  </div>
+</div>
+<script src="/static/js/images.js"></script>
 {{end}}
