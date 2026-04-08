@@ -51,8 +51,6 @@ type StoreService interface {
 	ExportAllData(ctx context.Context) (*model.ExportData, error)
 	ImportAllData(ctx context.Context, data *model.ExportData) error
 	FindDuplicates(ctx context.Context) ([]model.DuplicateGroup, error)
-	GetPhotosEnabled(ctx context.Context) (bool, error)
-	SetPhotosEnabled(ctx context.Context, enabled bool) error
 }
 
 // --- Healthcheck ---
@@ -270,7 +268,6 @@ type SettingsData struct {
 	Sessions         []SessionInfo
 	CurrentSessionID string
 	SessionTTL       int64 // TTL in seconds for JS expiry calculation
-	PhotosEnabled    bool
 }
 
 func (srv *Server) handleSettings() http.HandlerFunc {
@@ -316,11 +313,6 @@ func (srv *Server) handleSettings() http.HandlerFunc {
 		settingsData.Sessions = sessionInfos
 		settingsData.CurrentSessionID = currentSessID
 		settingsData.SessionTTL = int64(srv.sessions.TTL().Seconds())
-
-		photosEnabled, photosErr := srv.store.GetPhotosEnabled(r.Context())
-		if photosErr == nil {
-			settingsData.PhotosEnabled = photosEnabled
-		}
 
 		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
 			"layout.html", "settings.html")
@@ -1169,51 +1161,5 @@ func (srv *Server) handleDuplicates() http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, groups)
-	}
-}
-
-// --- Photos feature toggle ---
-
-func (srv *Server) handleGetPhotosSettings() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		enabled, err := srv.store.GetPhotosEnabled(r.Context())
-		if err != nil {
-			slog.Error("get photos settings", "err", err)
-			writeError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]bool{"enabled": enabled})
-	}
-}
-
-func (srv *Server) handleUpdatePhotosSettings() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Enabled bool `json:"enabled"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid JSON")
-			return
-		}
-		if err := srv.store.SetPhotosEnabled(r.Context(), req.Enabled); err != nil {
-			slog.Error("update photos settings", "err", err)
-			writeError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]bool{"enabled": req.Enabled})
-	}
-}
-
-// photosMiddleware returns 404 when photos feature is disabled (per D-07).
-func (srv *Server) photosMiddleware() func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			enabled, err := srv.store.GetPhotosEnabled(r.Context())
-			if err != nil || !enabled {
-				http.NotFound(w, r)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
 	}
 }

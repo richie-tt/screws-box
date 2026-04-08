@@ -43,17 +43,6 @@ type Tag struct {
 	UpdatedAt time.Time
 }
 
-// Photo represents an uploaded photo file.
-type Photo struct {
-	ID               int64  `json:"id"`
-	UUID             string `json:"uuid"`
-	StoragePath      string `json:"-"`
-	OriginalFilename string `json:"original_filename"`
-	ContentType      string `json:"content_type"`
-	FileSize         int64  `json:"file_size"`
-	UploadedAt       string `json:"uploaded_at"`
-}
-
 // GridData is the view model for the grid template.
 type GridData struct {
 	ShelfName       string

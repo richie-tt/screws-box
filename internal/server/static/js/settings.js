@@ -338,47 +338,6 @@
     });
   }
 
-  // --- Photos Toggle ---
-
-  var photosForm = document.getElementById('photos-form');
-  if (photosForm) {
-    var photosToggle = document.getElementById('photos-enabled');
-    var photosBtn = photosForm.querySelector('button[type="submit"]');
-    var photosFeedback = photosForm.querySelector('.settings-form-feedback');
-
-    photosForm.addEventListener('submit', function(e) {
-      e.preventDefault();
-      clearFeedback(photosFeedback);
-      setBusy(photosBtn, true);
-
-      fetch('/api/shelf/photos', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': getCSRFToken()
-        },
-        body: JSON.stringify({ enabled: photosToggle.checked })
-      })
-      .then(function(resp) {
-        return resp.json().then(function(data) {
-          return { ok: resp.ok, data: data };
-        });
-      })
-      .then(function(result) {
-        setBusy(photosBtn, false);
-        if (result.ok) {
-          showFeedback(photosFeedback, 'Saved', 'success');
-        } else {
-          showFeedback(photosFeedback, (result.data && result.data.error) || 'Failed to save', 'error');
-        }
-      })
-      .catch(function() {
-        setBusy(photosBtn, false);
-        showFeedback(photosFeedback, 'Failed to save', 'error');
-      });
-    });
-  }
-
   // --- OIDC Config ---
 
   var oidcForm = document.getElementById('oidc-form');

@@ -95,23 +95,6 @@ var schemaDDL = []string{
 		updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
 		UNIQUE(sub, issuer)
 	)`,
-	`CREATE TABLE IF NOT EXISTS photo (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		uuid TEXT NOT NULL UNIQUE,
-		storage_path TEXT NOT NULL DEFAULT '',
-		original_filename TEXT NOT NULL DEFAULT '',
-		content_type TEXT NOT NULL DEFAULT '',
-		file_size INTEGER NOT NULL DEFAULT 0,
-		uploaded_at DATETIME NOT NULL DEFAULT (datetime('now'))
-	)`,
-	`CREATE TABLE IF NOT EXISTS item_photo (
-		item_id INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
-		photo_id INTEGER NOT NULL REFERENCES photo(id) ON DELETE CASCADE,
-		sort_order INTEGER NOT NULL DEFAULT 0,
-		PRIMARY KEY (item_id, photo_id)
-	)`,
-	`CREATE INDEX IF NOT EXISTS idx_item_photo_item_id ON item_photo(item_id)`,
-	`CREATE INDEX IF NOT EXISTS idx_item_photo_photo_id ON item_photo(photo_id)`,
 }
 
 // migrations runs ALTER TABLE statements for columns added after the initial schema.
@@ -127,7 +110,6 @@ var migrations = []string{
 	`ALTER TABLE shelf ADD COLUMN oidc_client_secret TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE shelf ADD COLUMN oidc_display_name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE shelf ADD COLUMN encryption_key TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE shelf ADD COLUMN photos_enabled INTEGER NOT NULL DEFAULT 0`,
 }
 
 // deferRollback is used with defer to rollback a transaction.
@@ -1535,27 +1517,4 @@ func (s *Store) GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("store encryption key: %w", err)
 	}
 	return key, nil
-}
-
-// GetPhotosEnabled returns whether the photos feature is enabled.
-func (s *Store) GetPhotosEnabled(ctx context.Context) (bool, error) {
-	var enabled int
-	err := s.conn.QueryRowContext(ctx, "SELECT photos_enabled FROM shelf LIMIT 1").Scan(&enabled)
-	if err != nil {
-		return false, fmt.Errorf("get photos_enabled: %w", err)
-	}
-	return enabled == 1, nil
-}
-
-// SetPhotosEnabled enables or disables the photos feature.
-func (s *Store) SetPhotosEnabled(ctx context.Context, enabled bool) error {
-	val := 0
-	if enabled {
-		val = 1
-	}
-	_, err := s.conn.ExecContext(ctx, "UPDATE shelf SET photos_enabled = ?", val)
-	if err != nil {
-		return fmt.Errorf("set photos_enabled: %w", err)
-	}
-	return nil
 }

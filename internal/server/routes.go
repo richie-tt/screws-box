@@ -78,8 +78,6 @@ func (srv *Server) Router() http.Handler {
 				r.Put("/shelf/resize", srv.handleResizeShelf())
 				r.Get("/shelf/auth", srv.handleGetAuthSettings())
 				r.Put("/shelf/auth", srv.handleUpdateAuthSettings())
-				r.Get("/shelf/photos", srv.handleGetPhotosSettings())
-				r.Put("/shelf/photos", srv.handleUpdatePhotosSettings())
 				r.Get("/oidc/config", srv.handleGetOIDCConfig())
 				r.Put("/oidc/config", srv.handleUpdateOIDCConfig())
 				r.Get("/export", srv.handleExport())

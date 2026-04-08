@@ -34,7 +34,6 @@
             <a href="#tags" class="settings-nav-item">Tags</a>
             <a href="#housekeeping" class="settings-nav-item">Housekeeping</a>
             <a href="#auth" class="settings-nav-item">Authentication</a>
-            <a href="#photos" class="settings-nav-item">Photos</a>
             <a href="#data" class="settings-nav-item">Data</a>
             <a href="#sessions" class="settings-nav-item">Sessions <small class="nav-badge" aria-live="polite">{{.SessionCount}}</small></a>
         </nav>
@@ -169,24 +168,6 @@
                 </div>
                 <div class="settings-form-actions">
                     <button type="submit" class="btn" id="oidc-save-btn">Save OIDC Settings</button>
-                    <span class="settings-form-feedback" role="status" aria-live="polite"></span>
-                </div>
-            </form>
-        </section>
-
-        <section class="settings-card" id="photos">
-            <h2>Photos</h2>
-            <form id="photos-form" class="settings-form">
-                <div class="form-group">
-                    <label class="toggle-label" for="photos-enabled">
-                        <input type="checkbox" id="photos-enabled" name="enabled" {{if .PhotosEnabled}}checked{{end}}>
-                        <span class="toggle-switch"></span>
-                        Enable Photos
-                    </label>
-                </div>
-                <p class="text-muted">When enabled, you can attach photos to items for visual identification.</p>
-                <div class="settings-form-actions">
-                    <button type="submit" class="btn">Save Photos Settings</button>
                     <span class="settings-form-feedback" role="status" aria-live="polite"></span>
                 </div>
             </form>
