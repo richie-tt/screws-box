@@ -2,9 +2,13 @@
 
 A web application for managing hardware organizer boxes. Quickly find which container holds your screws, bolts, washers, and other small parts.
 
+![Grid View Screenshot](assets/main.png)
+
 Type a part name or tag and instantly see which grid position (e.g., "3B") holds it.
 
 > **Grid View:** A chessboard-style grid showing labeled containers (e.g., "1A", "3B") with item counts. The search bar sits above the grid. Each cell is clickable to view or add items.
+
+![Grid View Screenshot](assets/search.png)
 
 ## Table of Contents
 
@@ -149,7 +153,21 @@ Set up the service:
 
 ### Docker
 
-Build and run with Docker Compose:
+**Using pre-built image:**
+
+Run the latest release from GitHub Container Registry:
+
+```bash
+docker run -p 8080:8080 ghcr.io/richie-tt/screws-box:v1.4.1
+```
+
+To persist data, mount a volume for the database:
+
+```bash
+docker run -p 8080:8080 -v $(pwd)/data:/data -e DB_PATH=/data/screws_box.db ghcr.io/richie-tt/screws-box:v1.4.1
+```
+
+**Build and run with Docker Compose:**
 
 ```bash
 docker compose up -d
