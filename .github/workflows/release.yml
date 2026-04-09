@@ -174,7 +174,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=${{ needs.version.outputs.tag }}
-            type=sha
             type=raw,value=latest
 
       - uses: docker/build-push-action@v7
