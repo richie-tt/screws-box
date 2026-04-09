@@ -8,7 +8,7 @@
   display: flex;
   gap: var(--space-lg);
   min-height: calc(100dvh - 120px);
-  max-width: 960px;
+  max-width: 1248px;
   margin: 0 auto;
   padding: var(--space-md);
 }
@@ -74,7 +74,7 @@
 .settings-content {
   flex: 1;
   min-width: 0;
-  max-width: 640px;
+  max-width: 832px;
   padding: var(--space-lg);
 }
 
