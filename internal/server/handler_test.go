@@ -2075,3 +2075,600 @@ func TestHandleGetOIDCConfig(t *testing.T) {
 	assert.Equal(t, "test-client", cfg.ClientID)
 	assert.NotEqual(t, "test-secret", cfg.ClientSecret)
 }
+
+// ==========================================================================
+// Additional coverage tests for low-coverage handlers
+// ==========================================================================
+
+// setupAuthEnabled creates a test router with auth enabled using a strong password.
+func setupAuthEnabled(t *testing.T) (http.Handler, *store.Store) {
+	t.Helper()
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+	err := s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "Secret123!@#",
+	})
+	require.NoError(t, err)
+	return router, s
+}
+
+// --- handleLoginPost additional coverage ---
+
+func TestHandleLoginPost_EmptyFields(t *testing.T) {
+	router, _ := setupAuthEnabled(t)
+
+	body := "username=&password="
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "empty credentials should re-render login page")
+	assert.Contains(t, w.Body.String(), "Invalid username or password")
+}
+
+func TestHandleLoginPost_StoreError(t *testing.T) {
+	ms := &mockStore{
+		getAuthSettingsFn: func(_ context.Context) (*model.AuthSettings, error) {
+			return &model.AuthSettings{Enabled: true, Username: "admin", HasPassword: true}, nil
+		},
+		validateCredentialsFn: func(_ context.Context, _, _ string) (bool, error) {
+			return false, fmt.Errorf("database error")
+		},
+		getOIDCConfigFn: func(_ context.Context) (*model.OIDCConfig, error) {
+			return &model.OIDCConfig{Enabled: false}, nil
+		},
+	}
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	body := "username=admin&password=Secret123!@#"
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "store error should re-render login page")
+	assert.Contains(t, w.Body.String(), "Internal error")
+}
+
+func TestHandleLoginPost_SessionCookie(t *testing.T) {
+	router, _ := setupAuthEnabled(t)
+
+	body := "username=admin&password=Secret123!@#"
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusFound, w.Code)
+
+	var hasSessionCookie bool
+	for _, c := range w.Result().Cookies() {
+		if c.Name == session.CookieName {
+			hasSessionCookie = true
+			assert.NotEmpty(t, c.Value)
+		}
+	}
+	assert.True(t, hasSessionCookie, "should set session cookie on successful login")
+}
+
+// --- handleExport additional coverage ---
+
+func TestHandleExport_ContentDisposition(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTestItem(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/export", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
+	assert.Contains(t, w.Header().Get("Content-Disposition"), "screws-box-export-")
+	assert.Contains(t, w.Header().Get("Content-Disposition"), ".json")
+}
+
+func TestHandleExport_StructureWithItems(t *testing.T) {
+	router, _ := setupTestRouter(t)
+	createTestItem(t, router)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/export", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var data model.ExportData
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&data))
+	assert.Equal(t, 1, data.Version)
+	assert.NotEmpty(t, data.ExportedAt)
+	assert.Positive(t, data.Shelf.Rows)
+	assert.Positive(t, data.Shelf.Cols)
+
+	// At least one container should have items
+	itemCount := 0
+	for _, c := range data.Shelf.Containers {
+		itemCount += len(c.Items)
+	}
+	assert.Positive(t, itemCount, "export should include the created item")
+}
+
+func TestHandleExport_StoreError(t *testing.T) {
+	ms := errStore()
+	ms.exportAllDataFn = func(_ context.Context) (*model.ExportData, error) {
+		return nil, fmt.Errorf("database error")
+	}
+	memStore := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
+	t.Cleanup(func() { memStore.Close() })
+	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
+	srv := NewServer(ms, mgr, "test")
+	router := srv.Router()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/export", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestHandleExport_EmptyShelf(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/export", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var data model.ExportData
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&data))
+
+	itemCount := 0
+	for _, c := range data.Shelf.Containers {
+		itemCount += len(c.Items)
+	}
+	assert.Equal(t, 0, itemCount, "empty shelf should export zero items")
+}
+
+// --- handleImportValidate additional coverage ---
+
+func TestHandleImportValidate_MissingRequiredFields(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	// Version 0, empty shelf name, zero rows/cols
+	data := `{"version":0,"shelf":{"name":"","rows":0,"cols":0}}`
+
+	boundary := "testmissing123"
+	var body strings.Builder
+	body.WriteString("--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"import.json\"\r\n")
+	body.WriteString("Content-Type: application/json\r\n\r\n")
+	body.WriteString(data)
+	body.WriteString("\r\n--" + boundary + "--\r\n")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/import/validate", strings.NewReader(body.String()))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	errs, ok := resp["errors"].([]any)
+	require.True(t, ok)
+	// Should report: version, name, rows, cols
+	assert.GreaterOrEqual(t, len(errs), 4, "should report all validation errors")
+}
+
+func TestHandleImportValidate_SummaryCountsMultipleItems(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	importData := model.ExportData{
+		Version:    1,
+		ExportedAt: "2026-01-01T00:00:00Z",
+		Shelf: model.ExportShelf{
+			Name: "Test",
+			Rows: 2,
+			Cols: 2,
+			Containers: []model.ExportContainer{
+				{
+					Col: 1, Row: 1, Label: "1A",
+					Items: []model.ExportItem{
+						{Name: "Bolt", Tags: []string{"m6", "steel"}},
+						{Name: "Nut", Tags: []string{"m6", "brass"}},
+					},
+				},
+			},
+		},
+	}
+	jsonBytes, err := json.Marshal(importData)
+	require.NoError(t, err)
+
+	boundary := "testcounts123"
+	var body strings.Builder
+	body.WriteString("--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"import.json\"\r\n")
+	body.WriteString("Content-Type: application/json\r\n\r\n")
+	body.Write(jsonBytes)
+	body.WriteString("\r\n--" + boundary + "--\r\n")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/import/validate", strings.NewReader(body.String()))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	summary, ok := resp["summary"].(map[string]any)
+	require.True(t, ok)
+	assert.InDelta(t, float64(2), summary["items"], 0, "should count 2 items")
+	assert.InDelta(t, float64(3), summary["tags"], 0, "should count 3 unique tags (m6, steel, brass)")
+}
+
+// --- handleImportConfirm additional coverage ---
+
+func TestHandleImportConfirm_InvalidJSON(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/import/confirm", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleImportConfirm_TokenUsedTwice(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	exportData, err := s.ExportAllData(ctx)
+	require.NoError(t, err)
+
+	exportJSON, err := json.Marshal(exportData)
+	require.NoError(t, err)
+
+	boundary := "testtwice123"
+	var body strings.Builder
+	body.WriteString("--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"export.json\"\r\n")
+	body.WriteString("Content-Type: application/json\r\n\r\n")
+	body.Write(exportJSON)
+	body.WriteString("\r\n--" + boundary + "--\r\n")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/import/validate", strings.NewReader(body.String()))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var validateResp map[string]any
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&validateResp))
+	token := validateResp["token"].(string)
+
+	// First confirm succeeds
+	confirmBody := fmt.Sprintf(`{"token":"%s"}`, token)
+	req = httptest.NewRequest(http.MethodPost, "/api/import/confirm", strings.NewReader(confirmBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Second confirm with same token fails
+	req = httptest.NewRequest(http.MethodPost, "/api/import/confirm", strings.NewReader(confirmBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "expired")
+}
+
+// --- handleOIDCStart additional coverage ---
+
+func TestOIDCStart_EnabledButProviderUnreachable(t *testing.T) {
+	ms := oidcEnabledStore()
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/oidc", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Contains(t, w.Header().Get("Location"), "/login?error=sso_unavailable",
+		"unreachable OIDC provider should redirect with sso_unavailable error")
+}
+
+func TestOIDCStart_EncryptionKeyError(t *testing.T) {
+	ms := oidcEnabledStore()
+	ms.getOrCreateEncKeyFn = func(_ context.Context) ([]byte, error) {
+		return nil, fmt.Errorf("key error")
+	}
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/oidc", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Contains(t, w.Header().Get("Location"), "/login?error=auth_failed")
+}
+
+func TestOIDCStart_ConfigError(t *testing.T) {
+	ms := &mockStore{
+		getAuthSettingsFn: func(_ context.Context) (*model.AuthSettings, error) {
+			return &model.AuthSettings{Enabled: true}, nil
+		},
+		getOIDCConfigFn: func(_ context.Context) (*model.OIDCConfig, error) {
+			return nil, fmt.Errorf("config error")
+		},
+	}
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/oidc", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/login", w.Header().Get("Location"))
+}
+
+// --- handleUpdateOIDCConfig additional coverage ---
+
+func TestHandleUpdateOIDCConfig_DisableOIDC(t *testing.T) {
+	ms := &mockStore{
+		getAuthSettingsFn: func(_ context.Context) (*model.AuthSettings, error) {
+			return &model.AuthSettings{Enabled: false}, nil
+		},
+		getOIDCConfigFn: func(_ context.Context) (*model.OIDCConfig, error) {
+			return &model.OIDCConfig{Enabled: true, IssuerURL: "https://idp.example.com", ClientID: "cid"}, nil
+		},
+		getOIDCConfigMaskedFn: func(_ context.Context) (*model.OIDCConfig, error) {
+			return &model.OIDCConfig{Enabled: false}, nil
+		},
+		saveOIDCConfigFn: func(_ context.Context, _ *model.OIDCConfig) error {
+			return nil
+		},
+	}
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	body := `{"enabled":false}`
+	req := httptest.NewRequest(http.MethodPut, "/api/oidc/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+}
+
+func TestHandleUpdateOIDCConfig_InvalidJSON(t *testing.T) {
+	ms := &mockStore{
+		getAuthSettingsFn: func(_ context.Context) (*model.AuthSettings, error) {
+			return &model.AuthSettings{Enabled: false}, nil
+		},
+	}
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	req := httptest.NewRequest(http.MethodPut, "/api/oidc/config", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleUpdateOIDCConfig_EnableMissingFields(t *testing.T) {
+	ms := &mockStore{
+		getAuthSettingsFn: func(_ context.Context) (*model.AuthSettings, error) {
+			return &model.AuthSettings{Enabled: false}, nil
+		},
+		getOIDCConfigFn: func(_ context.Context) (*model.OIDCConfig, error) {
+			return &model.OIDCConfig{Enabled: false}, nil
+		},
+	}
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	body := `{"enabled":true,"issuer_url":"","client_id":"","client_secret":"sec"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/oidc/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Contains(t, resp["error"], "required")
+}
+
+func TestHandleUpdateOIDCConfig_EnableMissingSecret(t *testing.T) {
+	ms := &mockStore{
+		getAuthSettingsFn: func(_ context.Context) (*model.AuthSettings, error) {
+			return &model.AuthSettings{Enabled: false}, nil
+		},
+		getOIDCConfigFn: func(_ context.Context) (*model.OIDCConfig, error) {
+			return &model.OIDCConfig{Enabled: false, ClientSecret: ""}, nil
+		},
+	}
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	body := `{"enabled":true,"issuer_url":"https://example.com","client_id":"cid","client_secret":""}`
+	req := httptest.NewRequest(http.MethodPut, "/api/oidc/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Contains(t, resp["error"], "required")
+}
+
+func TestHandleUpdateOIDCConfig_SaveError(t *testing.T) {
+	ms := &mockStore{
+		getAuthSettingsFn: func(_ context.Context) (*model.AuthSettings, error) {
+			return &model.AuthSettings{Enabled: false}, nil
+		},
+		getOIDCConfigFn: func(_ context.Context) (*model.OIDCConfig, error) {
+			return &model.OIDCConfig{Enabled: false}, nil
+		},
+		saveOIDCConfigFn: func(_ context.Context, _ *model.OIDCConfig) error {
+			return fmt.Errorf("save error")
+		},
+	}
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	body := `{"enabled":false}`
+	req := httptest.NewRequest(http.MethodPut, "/api/oidc/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// --- handleLogout additional coverage ---
+
+func TestHandleLogout_ClearsSession(t *testing.T) {
+	router, _ := setupAuthEnabled(t)
+
+	// Login to create a session
+	loginBody := "username=admin&password=Secret123!@#"
+	loginReq := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	require.Equal(t, http.StatusFound, loginW.Code)
+
+	var sessionCookieValue string
+	for _, c := range loginW.Result().Cookies() {
+		if c.Name == session.CookieName {
+			sessionCookieValue = c.Value
+		}
+	}
+	require.NotEmpty(t, sessionCookieValue)
+
+	// Logout with the session cookie
+	logoutReq := httptest.NewRequest(http.MethodGet, "/logout", nil)
+	logoutReq.AddCookie(&http.Cookie{Name: session.CookieName, Value: sessionCookieValue})
+	logoutW := httptest.NewRecorder()
+	router.ServeHTTP(logoutW, logoutReq)
+
+	assert.Equal(t, http.StatusFound, logoutW.Code)
+	assert.Equal(t, "/login", logoutW.Header().Get("Location"))
+
+	// Session cookie should be cleared
+	var sessionCleared bool
+	for _, c := range logoutW.Result().Cookies() {
+		if c.Name == session.CookieName && c.MaxAge < 0 {
+			sessionCleared = true
+		}
+	}
+	assert.True(t, sessionCleared, "logout should clear the session cookie")
+}
+
+func TestHandleLogout_WithoutSession(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/logout", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/login", w.Header().Get("Location"))
+}
+
+// --- Login page (GET /login) additional coverage ---
+
+func TestHandleLoginPage_AuthDisabled_Redirects(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/", w.Header().Get("Location"),
+		"should redirect to / when auth is disabled")
+}
+
+func TestHandleLoginPage_AuthEnabled_ShowsForm(t *testing.T) {
+	router, _ := setupAuthEnabled(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `action="/login"`)
+}
+
+func TestHandleLoginPage_AlreadyLoggedIn_Redirects(t *testing.T) {
+	router, _ := setupAuthEnabled(t)
+
+	// Login first
+	loginReq := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("username=admin&password=Secret123!@#"))
+	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	require.Equal(t, http.StatusFound, loginW.Code)
+
+	var sessionCookie *http.Cookie
+	for _, c := range loginW.Result().Cookies() {
+		if c.Name == session.CookieName {
+			sessionCookie = c
+		}
+	}
+	require.NotNil(t, sessionCookie)
+
+	// Visit login page with active session
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	req.AddCookie(sessionCookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/", w.Header().Get("Location"),
+		"already logged in user should be redirected to /")
+}
+
+func TestHandleLoginPage_AuthFailedErrorParam(t *testing.T) {
+	ms := oidcEnabledStore()
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	req := httptest.NewRequest(http.MethodGet, "/login?error=auth_failed", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Authentication failed")
+}
+
+func TestHandleLoginPage_SSOUnavailableErrorParam(t *testing.T) {
+	ms := oidcEnabledStore()
+	srv := newTestServerWithMock(t, ms)
+	router := srv.Router()
+
+	req := httptest.NewRequest(http.MethodGet, "/login?error=sso_unavailable", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "SSO provider is unreachable")
+}
+
+// Ensure oidcpkg import is referenced (used in existing tests above and below).
+var _ = oidcpkg.StateCookieName
