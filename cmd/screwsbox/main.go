@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+var version = "dev"
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -116,7 +118,7 @@ func run() error {
 	}
 	sessionMgr := session.NewManager(sessionStore, sessionTTL, storeType)
 
-	appSrv := server.NewServer(&s, sessionMgr)
+	appSrv := server.NewServer(&s, sessionMgr, version)
 
 	port := os.Getenv("PORT")
 	if port == "" {

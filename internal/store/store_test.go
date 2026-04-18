@@ -1626,3 +1626,417 @@ func TestDeleteUsedTagFails(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, tags, 1)
 }
+
+// --- hashPassword / checkPassword tests ---
+
+func TestHashPasswordProducesBcrypt(t *testing.T) {
+	hash := hashPassword("secret123")
+	assert.True(t, strings.HasPrefix(hash, "$2a$"), "expected bcrypt prefix, got: %s", hash)
+}
+
+func TestHashPasswordDifferentInputsDifferentHashes(t *testing.T) {
+	h1 := hashPassword("password1")
+	h2 := hashPassword("password2")
+	assert.NotEqual(t, h1, h2)
+}
+
+func TestHashPasswordSameInputDifferentSalts(t *testing.T) {
+	h1 := hashPassword("same")
+	h2 := hashPassword("same")
+	// bcrypt uses random salt, so even the same password gives different hashes
+	assert.NotEqual(t, h1, h2)
+}
+
+func TestCheckPasswordCorrect(t *testing.T) {
+	hash := hashPassword("correct-horse")
+	assert.True(t, checkPassword(hash, "correct-horse"))
+}
+
+func TestCheckPasswordWrong(t *testing.T) {
+	hash := hashPassword("correct-horse")
+	assert.False(t, checkPassword(hash, "wrong-horse"))
+}
+
+func TestCheckPasswordLegacySHA256Rejected(t *testing.T) {
+	// Legacy sha256:salt:hash format should always return false
+	legacy := "sha256:somesalt:abc123def456"
+	assert.False(t, checkPassword(legacy, "anything"))
+}
+
+func TestCheckPasswordEmptyHash(t *testing.T) {
+	assert.False(t, checkPassword("", "anything"))
+}
+
+// --- Ping ---
+
+func TestPing(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	assert.NoError(t, s.Ping(ctx))
+}
+
+func TestPingAfterClose(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	require.NoError(t, s.Close())
+	assert.Error(t, s.Ping(ctx))
+}
+
+// --- DisableAuth ---
+
+func TestDisableAuth(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	// First enable auth
+	settings := &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "secret",
+	}
+	require.NoError(t, s.UpdateAuthSettings(ctx, settings))
+
+	// Verify auth is enabled
+	got, err := s.GetAuthSettings(ctx)
+	require.NoError(t, err)
+	assert.True(t, got.Enabled)
+	assert.Equal(t, "admin", got.Username)
+	assert.True(t, got.HasPassword)
+
+	// Disable
+	require.NoError(t, s.DisableAuth())
+
+	// Verify auth is disabled and fields cleared
+	got, err = s.GetAuthSettings(ctx)
+	require.NoError(t, err)
+	assert.False(t, got.Enabled)
+	assert.Empty(t, got.Username)
+	assert.False(t, got.HasPassword)
+}
+
+func TestDisableAuthAlreadyDisabled(t *testing.T) {
+	s := openTestStore(t)
+	// Auth is disabled by default; calling DisableAuth should not error
+	assert.NoError(t, s.DisableAuth())
+}
+
+// --- GetShelfName ---
+
+func TestGetShelfName(t *testing.T) {
+	s := openTestStore(t)
+	name, err := s.GetShelfName()
+	require.NoError(t, err)
+	assert.Equal(t, "My Organizer", name)
+}
+
+func TestGetShelfNameAfterUpdate(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	require.NoError(t, s.UpdateShelfName(ctx, "Workshop Box"))
+
+	name, err := s.GetShelfName()
+	require.NoError(t, err)
+	assert.Equal(t, "Workshop Box", name)
+}
+
+// --- GetContainerIDByPosition ---
+
+func TestGetContainerIDByPosition(t *testing.T) {
+	s := openTestStore(t)
+
+	id, err := s.GetContainerIDByPosition(1, 1)
+	require.NoError(t, err)
+	assert.Positive(t, id)
+
+	// Verify it matches the helper
+	expected := getContainerIDByPos(t, s, 1, 1)
+	assert.Equal(t, expected, id)
+}
+
+func TestGetContainerIDByPositionAllCorners(t *testing.T) {
+	s := openTestStore(t)
+
+	// Default shelf is 10 cols x 5 rows
+	corners := []struct{ col, row int }{
+		{1, 1}, {10, 1}, {1, 5}, {10, 5},
+	}
+	ids := make(map[int64]bool)
+	for _, c := range corners {
+		id, err := s.GetContainerIDByPosition(c.col, c.row)
+		require.NoError(t, err, "pos (%d,%d)", c.col, c.row)
+		assert.Positive(t, id, "pos (%d,%d)", c.col, c.row)
+		ids[id] = true
+	}
+	assert.Len(t, ids, 4, "all corners should have distinct container IDs")
+}
+
+func TestGetContainerIDByPositionNotFound(t *testing.T) {
+	s := openTestStore(t)
+
+	_, err := s.GetContainerIDByPosition(99, 99)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "get container by position")
+}
+
+// --- GetAuthSettings ---
+
+func TestGetAuthSettingsDefault(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	settings, err := s.GetAuthSettings(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, settings)
+	assert.False(t, settings.Enabled)
+	assert.Empty(t, settings.Username)
+	assert.False(t, settings.HasPassword)
+}
+
+// --- UpdateAuthSettings ---
+
+func TestUpdateAuthSettingsWithPassword(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	settings := &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "mypassword",
+	}
+	require.NoError(t, s.UpdateAuthSettings(ctx, settings))
+
+	got, err := s.GetAuthSettings(ctx)
+	require.NoError(t, err)
+	assert.True(t, got.Enabled)
+	assert.Equal(t, "admin", got.Username)
+	assert.True(t, got.HasPassword)
+
+	// Verify the stored password is a bcrypt hash
+	enabled, user, passHash, err := s.GetRawAuthRow()
+	require.NoError(t, err)
+	assert.Equal(t, 1, enabled)
+	assert.Equal(t, "admin", user)
+	assert.True(t, strings.HasPrefix(passHash, "$2a$"), "expected bcrypt hash, got: %s", passHash)
+}
+
+func TestUpdateAuthSettingsWithoutPasswordKeepsExisting(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	// Set initial password
+	require.NoError(t, s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "initial",
+	}))
+
+	_, _, originalHash, err := s.GetRawAuthRow()
+	require.NoError(t, err)
+
+	// Update without password (empty Password field)
+	require.NoError(t, s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  true,
+		Username: "newuser",
+		Password: "",
+	}))
+
+	_, user, passHash, err := s.GetRawAuthRow()
+	require.NoError(t, err)
+	assert.Equal(t, "newuser", user)
+	assert.Equal(t, originalHash, passHash, "password hash should be preserved when Password is empty")
+}
+
+func TestUpdateAuthSettingsDisable(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	// Enable first
+	require.NoError(t, s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "secret",
+	}))
+
+	// Disable (keep username but disable)
+	require.NoError(t, s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  false,
+		Username: "admin",
+		Password: "",
+	}))
+
+	got, err := s.GetAuthSettings(ctx)
+	require.NoError(t, err)
+	assert.False(t, got.Enabled)
+}
+
+// --- ValidateCredentials ---
+
+func TestValidateCredentials(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	// Set up auth
+	require.NoError(t, s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "correctpass",
+	}))
+
+	tests := []struct {
+		name    string
+		user    string
+		pass    string
+		wantOK  bool
+		wantErr bool
+	}{
+		{
+			name:   "correct credentials",
+			user:   "admin",
+			pass:   "correctpass",
+			wantOK: true,
+		},
+		{
+			name:   "wrong password",
+			user:   "admin",
+			pass:   "wrongpass",
+			wantOK: false,
+		},
+		{
+			name:   "wrong username",
+			user:   "hacker",
+			pass:   "correctpass",
+			wantOK: false,
+		},
+		{
+			name:   "both wrong",
+			user:   "hacker",
+			pass:   "wrongpass",
+			wantOK: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ok, err := s.ValidateCredentials(ctx, tc.user, tc.pass)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantOK, ok)
+		})
+	}
+}
+
+func TestValidateCredentialsAuthDisabled(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	// Auth is disabled by default; any credentials should pass
+	ok, err := s.ValidateCredentials(ctx, "anyone", "anything")
+	require.NoError(t, err)
+	assert.True(t, ok, "when auth is disabled, all credentials should be accepted")
+}
+
+func TestValidateCredentialsEmptyPassword(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	require.NoError(t, s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "secret",
+	}))
+
+	ok, err := s.ValidateCredentials(ctx, "admin", "")
+	require.NoError(t, err)
+	assert.False(t, ok, "empty password should not match a bcrypt hash")
+}
+
+// --- SearchItemsByTags ---
+
+func TestSearchItemsByTagsSingleTag(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "M6 Bolt", nil, []string{"m6", "bolt"})
+	require.NoError(t, err)
+	_, err = s.CreateItem(ctx, cid, "M8 Bolt", nil, []string{"m8", "bolt"})
+	require.NoError(t, err)
+
+	results, err := s.SearchItemsByTags(ctx, "", []string{"m6"})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "M6 Bolt", results[0].Name)
+}
+
+func TestSearchItemsByTagsMultipleTagsAND(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "M6 Hex Bolt", nil, []string{"m6", "hex", "bolt"})
+	require.NoError(t, err)
+	_, err = s.CreateItem(ctx, cid, "M6 Round Screw", nil, []string{"m6", "round"})
+	require.NoError(t, err)
+
+	results, err := s.SearchItemsByTags(ctx, "", []string{"m6", "hex"})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "M6 Hex Bolt", results[0].Name)
+}
+
+func TestSearchItemsByTagsWithQuery(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "M6 Hex Bolt", nil, []string{"m6"})
+	require.NoError(t, err)
+	_, err = s.CreateItem(ctx, cid, "M6 Hex Nut", nil, []string{"m6"})
+	require.NoError(t, err)
+
+	results, err := s.SearchItemsByTags(ctx, "bolt", []string{"m6"})
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "M6 Hex Bolt", results[0].Name)
+}
+
+func TestSearchItemsByTagsEmptyTagsDelegatesToSearchItems(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "Special Widget", nil, []string{"unique"})
+	require.NoError(t, err)
+
+	// With empty tags slice, should behave like SearchItems
+	results, err := s.SearchItemsByTags(ctx, "widget", nil)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "Special Widget", results[0].Name)
+}
+
+func TestSearchItemsByTagsNoMatch(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	cid := getTestContainerID(t, s)
+
+	_, err := s.CreateItem(ctx, cid, "M6 Bolt", nil, []string{"m6"})
+	require.NoError(t, err)
+
+	results, err := s.SearchItemsByTags(ctx, "", []string{"nonexistent"})
+	require.NoError(t, err)
+	assert.Empty(t, results)
+}
+
+func TestSearchItemsByTagsEmptyQueryEmptyTags(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	results, err := s.SearchItemsByTags(ctx, "", nil)
+	require.NoError(t, err)
+	assert.Empty(t, results)
+}

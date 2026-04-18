@@ -13,11 +13,12 @@ import (
 type Server struct {
 	store    StoreService
 	sessions *session.Manager
+	version  string
 }
 
 // NewServer creates a Server with the given dependencies.
-func NewServer(store StoreService, sessions *session.Manager) *Server {
-	return &Server{store: store, sessions: sessions}
+func NewServer(store StoreService, sessions *session.Manager, version string) *Server {
+	return &Server{store: store, sessions: sessions, version: version}
 }
 
 // Router creates the chi router with all routes.

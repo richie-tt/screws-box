@@ -30,7 +30,7 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.Store) {
 	t.Cleanup(func() { memStore.Close() })
 	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
 
-	srv := NewServer(s, mgr)
+	srv := NewServer(s, mgr, "test")
 	router := srv.Router()
 	return router, s
 }
@@ -899,6 +899,8 @@ type mockStore struct {
 	renameTagFn            func(ctx context.Context, tagID int64, newName string) error
 	mergeTagsFn            func(ctx context.Context, sourceID, targetID int64) error
 	deleteUnusedTagFn      func(ctx context.Context, tagID int64) error
+	exportAllDataFn        func(ctx context.Context) (*model.ExportData, error)
+	importAllDataFn        func(ctx context.Context, data *model.ExportData) error
 }
 
 func (m *mockStore) Ping(ctx context.Context) error {
@@ -1029,11 +1031,17 @@ func (m *mockStore) GetOrCreateEncryptionKey(ctx context.Context) ([]byte, error
 	return make([]byte, 32), nil
 }
 
-func (m *mockStore) ExportAllData(_ context.Context) (*model.ExportData, error) {
+func (m *mockStore) ExportAllData(ctx context.Context) (*model.ExportData, error) {
+	if m.exportAllDataFn != nil {
+		return m.exportAllDataFn(ctx)
+	}
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (m *mockStore) ImportAllData(_ context.Context, _ *model.ExportData) error {
+func (m *mockStore) ImportAllData(ctx context.Context, data *model.ExportData) error {
+	if m.importAllDataFn != nil {
+		return m.importAllDataFn(ctx, data)
+	}
 	return fmt.Errorf("not implemented")
 }
 
@@ -1092,7 +1100,7 @@ func errStore() *mockStore {
 func errRouter() http.Handler {
 	ms := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
 	mgr := session.NewManager(ms, 1*time.Hour, "Memory")
-	srv := NewServer(errStore(), mgr)
+	srv := NewServer(errStore(), mgr, "test")
 	return srv.Router()
 }
 
@@ -1445,7 +1453,7 @@ func newTestServerWithMock(t *testing.T, store StoreService) *Server {
 	memStore := session.NewMemoryStore(1*time.Hour, 10*time.Minute)
 	t.Cleanup(func() { memStore.Close() })
 	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
-	return NewServer(store, mgr)
+	return NewServer(store, mgr, "test")
 }
 
 func oidcEnabledStore() *mockStore {
@@ -1801,7 +1809,7 @@ func TestHandleDuplicates_StoreError(t *testing.T) {
 	t.Cleanup(func() { memStore.Close() })
 	mgr := session.NewManager(memStore, 1*time.Hour, "Memory")
 
-	srv := NewServer(s, mgr)
+	srv := NewServer(s, mgr, "test")
 	router := srv.Router()
 
 	// Close store to force error
@@ -1812,4 +1820,258 @@ func TestHandleDuplicates_StoreError(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// --- Login POST tests ---
+
+func TestHandleLoginPostSuccess(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	err := s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "secret123",
+	})
+	require.NoError(t, err)
+
+	body := "username=admin&password=secret123"
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/", w.Header().Get("Location"))
+}
+
+func TestHandleLoginPostInvalidCredentials(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	err := s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "secret123",
+	})
+	require.NoError(t, err)
+
+	body := "username=admin&password=wrong"
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Invalid username or password")
+}
+
+// --- Logout test ---
+
+func TestHandleLogout(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	err := s.UpdateAuthSettings(ctx, &model.AuthSettings{
+		Enabled:  true,
+		Username: "admin",
+		Password: "pass123",
+	})
+	require.NoError(t, err)
+
+	// Login to get session cookie
+	loginBody := "username=admin&password=pass123"
+	loginReq := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	require.Equal(t, http.StatusFound, loginW.Code)
+
+	cookies := loginW.Result().Cookies()
+
+	logoutReq := httptest.NewRequest(http.MethodGet, "/logout", nil)
+	for _, c := range cookies {
+		logoutReq.AddCookie(c)
+	}
+	logoutW := httptest.NewRecorder()
+	router.ServeHTTP(logoutW, logoutReq)
+
+	assert.Equal(t, http.StatusFound, logoutW.Code)
+	assert.Equal(t, "/login", logoutW.Header().Get("Location"))
+}
+
+// --- Export test ---
+
+func TestHandleExport(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	// Use container ID 1 (seeded by default shelf)
+	_, err := s.CreateItem(ctx, 1, "Export Bolt", nil, []string{"m6", "steel"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/export", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
+	assert.Contains(t, w.Header().Get("Content-Disposition"), "screws-box-export-")
+
+	var data model.ExportData
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&data))
+	assert.Equal(t, 1, data.Version)
+	assert.NotEmpty(t, data.Shelf.Name)
+}
+
+// --- Import validate + confirm tests ---
+
+func TestHandleImportValidateAndConfirm(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	exportData, err := s.ExportAllData(ctx)
+	require.NoError(t, err)
+
+	exportJSON, err := json.Marshal(exportData)
+	require.NoError(t, err)
+
+	boundary := "testboundary123"
+	var body strings.Builder
+	body.WriteString("--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"export.json\"\r\n")
+	body.WriteString("Content-Type: application/json\r\n\r\n")
+	body.Write(exportJSON)
+	body.WriteString("\r\n--" + boundary + "--\r\n")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/import/validate", strings.NewReader(body.String()))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+
+	var validateResp map[string]any
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&validateResp))
+	token, ok := validateResp["token"].(string)
+	require.True(t, ok)
+	assert.NotEmpty(t, token)
+
+	// Confirm step
+	confirmBody := fmt.Sprintf(`{"token":"%s"}`, token)
+	confirmReq := httptest.NewRequest(http.MethodPost, "/api/import/confirm", strings.NewReader(confirmBody))
+	confirmReq.Header.Set("Content-Type", "application/json")
+	confirmW := httptest.NewRecorder()
+	router.ServeHTTP(confirmW, confirmReq)
+
+	assert.Equal(t, http.StatusOK, confirmW.Code)
+	assert.Contains(t, confirmW.Body.String(), "Import complete")
+}
+
+func TestHandleImportValidateNoFile(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/import/validate", nil)
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=empty")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "No file uploaded")
+}
+
+func TestHandleImportValidateInvalidJSON(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	boundary := "testboundary456"
+	var body strings.Builder
+	body.WriteString("--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"bad.json\"\r\n")
+	body.WriteString("Content-Type: application/json\r\n\r\n")
+	body.WriteString("not json at all")
+	body.WriteString("\r\n--" + boundary + "--\r\n")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/import/validate", strings.NewReader(body.String()))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "valid JSON")
+}
+
+func TestHandleImportValidateBadVersion(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	data := `{"version":99,"exported_at":"2026-01-01T00:00:00Z","shelf":{"name":"Test","rows":1,"cols":1,"containers":[]}}`
+
+	boundary := "testboundary789"
+	var body strings.Builder
+	body.WriteString("--" + boundary + "\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"bad.json\"\r\n")
+	body.WriteString("Content-Type: application/json\r\n\r\n")
+	body.WriteString(data)
+	body.WriteString("\r\n--" + boundary + "--\r\n")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/import/validate", strings.NewReader(body.String()))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Unsupported file version")
+}
+
+func TestHandleImportConfirmExpiredToken(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	body := `{"token":"nonexistent-token"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/import/confirm", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "expired")
+}
+
+func TestHandleImportConfirmMissingToken(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	body := `{}`
+	req := httptest.NewRequest(http.MethodPost, "/api/import/confirm", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Missing import token")
+}
+
+// --- OIDC Config API tests ---
+
+func TestHandleGetOIDCConfig(t *testing.T) {
+	router, s := setupTestRouter(t)
+	ctx := context.Background()
+
+	err := s.SaveOIDCConfig(ctx, &model.OIDCConfig{
+		Enabled:      true,
+		IssuerURL:    "https://auth.example.com",
+		ClientID:     "test-client",
+		ClientSecret: "test-secret",
+		DisplayName:  "Test SSO",
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/oidc/config", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var cfg model.OIDCConfig
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&cfg))
+	assert.Equal(t, "https://auth.example.com", cfg.IssuerURL)
+	assert.Equal(t, "test-client", cfg.ClientID)
+	assert.NotEqual(t, "test-secret", cfg.ClientSecret)
 }
