@@ -53,6 +53,13 @@ type StoreService interface {
 	FindDuplicates(ctx context.Context) ([]model.DuplicateGroup, error)
 }
 
+// parseTemplates parses the given template files with a FuncMap that exposes the app version.
+func (srv *Server) parseTemplates(patterns ...string) (*template.Template, error) {
+	return template.New(patterns[0]).Funcs(template.FuncMap{
+		"version": func() string { return srv.version },
+	}).ParseFS(mustSubFS(ContentFS, "templates"), patterns...)
+}
+
 // --- Healthcheck ---
 
 func (srv *Server) handleHealthz() http.HandlerFunc {
@@ -235,8 +242,7 @@ func (srv *Server) handleGrid() http.HandlerFunc {
 		}
 		data.DisplayName = srv.getDisplayName(r)
 
-		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
-			"layout.html", "grid.html")
+		tmpl, err := srv.parseTemplates("layout.html", "grid.html")
 		if err != nil {
 			slog.Error("template parse error", "err", err)
 			http.Error(w, "template error", http.StatusInternalServerError)
@@ -314,8 +320,7 @@ func (srv *Server) handleSettings() http.HandlerFunc {
 		settingsData.CurrentSessionID = currentSessID
 		settingsData.SessionTTL = int64(srv.sessions.TTL().Seconds())
 
-		tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
-			"layout.html", "settings.html")
+		tmpl, err := srv.parseTemplates("layout.html", "settings.html")
 		if err != nil {
 			slog.Error("settings template parse error", "err", err)
 			http.Error(w, "template error", http.StatusInternalServerError)
@@ -764,7 +769,7 @@ func (srv *Server) handleLoginPage() http.HandlerFunc {
 				data.OIDCDisplayName = "SSO"
 			}
 		}
-		renderLogin(w, data)
+		srv.renderLogin(w, data)
 	}
 }
 
@@ -777,16 +782,16 @@ func (srv *Server) handleLoginPost() http.HandlerFunc {
 		valid, err := srv.store.ValidateCredentials(r.Context(), username, password)
 		if err != nil {
 			slog.Error("login: validate credentials", "err", err)
-			renderLogin(w, loginData{Error: "Internal error, please try again."})
+			srv.renderLogin(w, loginData{Error: "Internal error, please try again."})
 			return
 		}
 		if !valid {
-			renderLogin(w, loginData{Error: "Invalid username or password."})
+			srv.renderLogin(w, loginData{Error: "Invalid username or password."})
 			return
 		}
 		if err := srv.sessions.Create(w, r, username); err != nil {
 			slog.Error("login: create session", "err", err)
-			renderLogin(w, loginData{Error: "Internal error, please try again."})
+			srv.renderLogin(w, loginData{Error: "Internal error, please try again."})
 			return
 		}
 		http.Redirect(w, r, "/", http.StatusFound)
@@ -944,9 +949,8 @@ func (srv *Server) handleOIDCCallback() http.HandlerFunc {
 	}
 }
 
-func renderLogin(w http.ResponseWriter, data loginData) {
-	tmpl, err := template.ParseFS(mustSubFS(ContentFS, "templates"),
-		"layout.html", "login.html")
+func (srv *Server) renderLogin(w http.ResponseWriter, data loginData) {
+	tmpl, err := srv.parseTemplates("layout.html", "login.html")
 	if err != nil {
 		slog.Error("login template parse error", "err", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
