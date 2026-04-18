@@ -3,6 +3,11 @@ name: Release
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - 'LICENSE'
+      - '*.md'
+      - 'assets/**'
+      - '.vscode/**'
 
 permissions:
   contents: write
