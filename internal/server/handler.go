@@ -56,7 +56,8 @@ type StoreService interface {
 // parseTemplates parses the given template files with a FuncMap that exposes the app version.
 func (srv *Server) parseTemplates(patterns ...string) (*template.Template, error) {
 	return template.New(patterns[0]).Funcs(template.FuncMap{
-		"version": func() string { return srv.version },
+		"version":       func() string { return srv.version },
+		"staticVersion": func() string { return "?v=" + srv.version },
 	}).ParseFS(mustSubFS(ContentFS, "templates"), patterns...)
 }
 
