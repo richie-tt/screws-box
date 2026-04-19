@@ -3,8 +3,8 @@
 {{define "app_title"}}{{if .ShelfName}}{{.ShelfName}}{{else}}Screws Box{{end}}{{end}}
 
 {{define "extra_head"}}
-<link rel="stylesheet" href="/static/css/grid.css">
-<script src="/static/js/grid.js" defer></script>
+<link rel="stylesheet" href="/static/css/grid.css{{staticVersion}}">
+<script src="/static/js/grid.js{{staticVersion}}" defer></script>
 {{end}}
 
 {{define "header_actions"}}
