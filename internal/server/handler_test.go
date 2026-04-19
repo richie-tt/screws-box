@@ -1402,11 +1402,11 @@ func TestHandleSettingsPage(t *testing.T) {
 	body := w.Body.String()
 	assert.Contains(t, body, "settings-layout")
 	assert.Contains(t, body, "settings-sidebar")
-	assert.Contains(t, body, "Shelf Settings")
-	assert.Contains(t, body, "Authentication")
-	assert.Contains(t, body, "Sessions")
+	assert.Contains(t, body, "#shelf")
+	assert.Contains(t, body, "#auth")
+	assert.Contains(t, body, "#sessions")
 	assert.Contains(t, body, "nav-badge")
-	assert.Contains(t, body, "Back to Grid")
+	assert.Contains(t, body, `aria-label="Back to Grid"`)
 }
 
 func TestHandleSettingsShelfData(t *testing.T) {
@@ -1428,8 +1428,7 @@ func TestGridPageHasSettingsLink(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
 	assert.Contains(t, body, `href="/settings"`, "grid page should have Settings link")
-	assert.Contains(t, body, ">Settings</a>", "Settings link should have text 'Settings'")
-	assert.NotContains(t, body, "settings-trigger", "grid page should not have settings gear")
+	assert.Contains(t, body, `aria-label="Settings"`, "Settings link should have aria-label")
 }
 
 func TestSettingsPageNavigation(t *testing.T) {

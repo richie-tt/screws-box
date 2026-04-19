@@ -55,6 +55,7 @@ type GridData struct {
 	AuthUser        string
 	AuthHasPassword bool
 	DisplayName     string
+	AuthMethod      string
 }
 
 // AuthSettings holds authentication configuration.
