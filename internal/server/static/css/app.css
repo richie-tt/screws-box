@@ -335,3 +335,135 @@ button[aria-busy="true"] {
   color: var(--text-muted);
   margin-right: var(--space-xs);
 }
+
+/* --- Avatar Pill --- */
+.avatar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  transition: border-color 0.15s, background-color 0.15s;
+  position: relative;
+}
+.avatar-pill:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-inset);
+}
+
+.avatar-initials {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.avatar-name {
+  font-weight: 400;
+}
+
+.avatar-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.avatar-pill[aria-expanded="true"] .avatar-chevron {
+  transform: rotate(180deg);
+}
+
+/* Hide name on narrow screens, keep initials */
+@media (max-width: 480px) {
+  .avatar-name { display: none; }
+  .avatar-pill { padding: 3px; gap: 0; }
+  .avatar-chevron { display: none; }
+}
+
+/* --- Avatar Dropdown --- */
+.avatar-dropdown-wrap {
+  position: relative;
+}
+
+.avatar-dropdown {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 220px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  overflow: hidden;
+}
+.avatar-dropdown[data-open="true"] {
+  display: block;
+}
+
+.avatar-dropdown-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.avatar-dropdown-header .avatar-full-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.avatar-dropdown-header .avatar-auth-type {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.avatar-dropdown-menu {
+  padding: 4px;
+}
+.avatar-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.avatar-dropdown-item:hover {
+  background: var(--bg-inset);
+  text-decoration: none;
+}
+.avatar-dropdown-item svg {
+  flex-shrink: 0;
+}
+.avatar-dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 12px;
+}
+.avatar-dropdown-item.danger {
+  color: var(--danger);
+}
+
+/* --- Settings Back Arrow --- */
+.settings-back-arrow {
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+}
+.settings-back-arrow:hover {
+  color: var(--text);
+  text-decoration: none;
+}
