@@ -233,6 +233,15 @@ func (srv *Server) getDisplayName(r *http.Request) string {
 	return sess.Username
 }
 
+// getAuthMethod returns the auth method for the current session ("local" or "oidc").
+func (srv *Server) getAuthMethod(r *http.Request) string {
+	sess := srv.sessions.GetSession(r)
+	if sess == nil {
+		return ""
+	}
+	return sess.AuthMethod
+}
+
 func (srv *Server) handleGrid() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := srv.store.GetGridData()
@@ -241,6 +250,7 @@ func (srv *Server) handleGrid() http.HandlerFunc {
 			data = &model.GridData{Error: "Cannot load shelf -- check server logs."}
 		}
 		data.DisplayName = srv.getDisplayName(r)
+		data.AuthMethod = srv.getAuthMethod(r)
 
 		tmpl, err := srv.parseTemplates("layout.html", "grid.html")
 		if err != nil {
@@ -264,6 +274,7 @@ type SettingsData struct {
 	AuthUser         string
 	AuthHasPassword  bool
 	DisplayName      string
+	AuthMethod       string
 	OIDCEnabled      bool
 	OIDCIssuer       string
 	OIDCClientID     string
@@ -292,6 +303,7 @@ func (srv *Server) handleSettings() http.HandlerFunc {
 			AuthUser:        data.AuthUser,
 			AuthHasPassword: data.AuthHasPassword,
 			DisplayName:     srv.getDisplayName(r),
+			AuthMethod:      srv.getAuthMethod(r),
 		}
 		oidcCfg, oidcErr := srv.store.GetOIDCConfigMasked(r.Context())
 		if oidcErr == nil {
