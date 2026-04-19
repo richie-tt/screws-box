@@ -363,6 +363,8 @@ golangci-lint run ./...
 | `POST` | `/api/items/{id}/tags` | Add tag to item |
 | `DELETE` | `/api/items/{id}/tags/{tag}` | Remove tag from item |
 | `GET` | `/api/tags` | List all tags |
+| `PUT` | `/api/tags/{id}` | Rename tag |
+| `DELETE` | `/api/tags/{id}` | Delete unused tag |
 | `GET` | `/api/search` | Search items |
 | `GET` | `/api/containers/{id}/items` | List items in container |
 | `PUT` | `/api/shelf/resize` | Resize grid |
@@ -371,6 +373,7 @@ golangci-lint run ./...
 | `GET` | `/api/export` | Export all data as JSON |
 | `POST` | `/api/import/validate` | Validate import data |
 | `POST` | `/api/import/confirm` | Confirm and apply import |
+| `GET` | `/api/duplicates` | Find duplicate items across containers |
 | `GET/DELETE` | `/api/sessions` | List / revoke all sessions |
 | `DELETE` | `/api/sessions/{id}` | Revoke single session |
 
