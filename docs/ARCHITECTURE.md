@@ -39,7 +39,7 @@ internal/
   model/              Domain types shared across packages (Shelf, Container, Item, Tag, etc.)
   store/              SQLite persistence layer (schema DDL, CRUD, export/import)
   session/            Session management with pluggable backends
-    store.go          Store interface (Create, Get, Delete, Touch, List)
+    store.go          Store interface (Create, Get, Delete, Touch, DeleteByAuthMethod, List, Close)
     memory.go         In-memory Store with TTL expiry and background cleanup
     redis.go          Redis-backed Store using go-redis/v9
     manager.go        Manager wraps Store, handles cookie read/write and CSRF tokens

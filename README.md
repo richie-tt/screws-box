@@ -357,7 +357,7 @@ golangci-lint run ./...
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/` | Grid page (main UI) |
-| `GET` | `/admin` | Admin panel |
+| `GET` | `/settings` | Settings panel |
 | `GET/POST` | `/api/items` | List / create items |
 | `GET/PUT/DELETE` | `/api/items/{id}` | Get / update / delete item |
 | `POST` | `/api/items/{id}/tags` | Add tag to item |
