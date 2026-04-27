@@ -1,5 +1,7 @@
 # Screws Box
 
+[![codecov](https://codecov.io/gh/richie-tt/screws-box/branch/master/graph/badge.svg)](https://codecov.io/gh/richie-tt/screws-box)
+
 A web application for managing hardware organizer boxes. Quickly find which container holds your screws, bolts, washers, and other small parts.
 
 ![Grid View Screenshot](assets/main.png)
