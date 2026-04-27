@@ -1,0 +1,10 @@
+# Default owner — required reviewer for every PR
+* @richie-tt
+
+# Workflow & supply-chain config require owner review
+/.github/                @richie-tt
+/Dockerfile              @richie-tt
+/docker-compose.yml      @richie-tt
+/.pre-commit-config.yaml @richie-tt
+/go.mod                  @richie-tt
+/go.sum                  @richie-tt
