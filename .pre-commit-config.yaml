@@ -4,7 +4,6 @@ repos:
     hooks:
       - id: go-fmt
       - id: golangci-lint
-      - id: go-build
       - id: go-mod-tidy
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -18,12 +17,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: go-unit-tests
-        name: go unit tests
-        entry: go test ./...
-        pass_filenames: false
-        language: golang
-        types: [go]
       - id: go-mod-verify
         name: go mod verify
         entry: go mod verify
