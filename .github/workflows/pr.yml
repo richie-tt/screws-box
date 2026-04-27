@@ -1,0 +1,22 @@
+name: PR
+
+on:
+  pull_request:
+    branches: [master]
+    paths-ignore:
+      - 'LICENSE'
+      - '*.md'
+      - 'assets/**'
+      - '.vscode/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    uses: ./.github/workflows/_validate.yml
+    secrets: inherit
