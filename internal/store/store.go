@@ -163,12 +163,17 @@ func (s *Store) Ping(ctx context.Context) error {
 	return s.conn.PingContext(ctx)
 }
 
+// sqlDriverName is the database/sql driver used by Open. Production uses
+// "sqlite" (modernc.org/sqlite). Tests may override this to inject a
+// fault-injecting wrapper driver.
+var sqlDriverName = "sqlite"
+
 // Open opens the SQLite database at dbPath, configures pragmas,
 // creates the schema, and seeds the default shelf if needed.
 func (s *Store) Open(dbPath string) error {
 	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", dbPath)
 
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open(sqlDriverName, dsn)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
