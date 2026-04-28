@@ -2040,3 +2040,52 @@ func TestSearchItemsByTagsEmptyQueryEmptyTags(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }
+
+// seedManyItemsWithTag inserts n items in container (1,1) all sharing the same tag.
+// Used to force SearchItemsBatch over the 51-row pagination threshold so
+// searchBatchCount is invoked.
+func seedManyItemsWithTag(t *testing.T, s *Store, n int, tag, namePrefix string) {
+	t.Helper()
+	ctx := context.Background()
+	cID, err := s.GetContainerIDByPosition(1, 1)
+	require.NoError(t, err)
+	for i := range n {
+		_, err := s.CreateItem(ctx, cID, fmt.Sprintf("%s-%03d", namePrefix, i), nil, []string{tag})
+		require.NoError(t, err)
+	}
+}
+
+// Triggers searchBatchCount with tagsActive=true and query="" by paginating past
+// the 51-row LIMIT in SearchItemsBatch.
+func TestSearchItemsBatchPaginatedTagOnly(t *testing.T) {
+	s := openTestStore(t)
+	seedManyItemsWithTag(t, s, 60, "common", "widget")
+
+	resp, err := s.SearchItemsBatch(context.Background(), "", []string{"common"})
+	require.NoError(t, err)
+	assert.Equal(t, 60, resp.TotalCount)
+	assert.Len(t, resp.Results, 50)
+}
+
+// Triggers searchBatchCount with tagsActive=true and query!="" so the
+// inner += "... AND (LOWER(i.name) LIKE ...)" branch is exercised.
+func TestSearchItemsBatchPaginatedTagAndQuery(t *testing.T) {
+	s := openTestStore(t)
+	seedManyItemsWithTag(t, s, 55, "common", "widget")
+
+	resp, err := s.SearchItemsBatch(context.Background(), "widget", []string{"common"})
+	require.NoError(t, err)
+	assert.Equal(t, 55, resp.TotalCount)
+	assert.Len(t, resp.Results, 50)
+}
+
+// Triggers searchBatchCount with tagsActive=false (the !tagsActive branch).
+func TestSearchItemsBatchPaginatedQueryOnly(t *testing.T) {
+	s := openTestStore(t)
+	seedManyItemsWithTag(t, s, 55, "ignored", "screw")
+
+	resp, err := s.SearchItemsBatch(context.Background(), "screw", nil)
+	require.NoError(t, err)
+	assert.Equal(t, 55, resp.TotalCount)
+	assert.Len(t, resp.Results, 50)
+}
