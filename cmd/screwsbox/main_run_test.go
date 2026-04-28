@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"screws-box/internal/store"
 	"strconv"
-	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -15,22 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// freePort grabs a free TCP port. The listener is closed before return so
-// run() can immediately bind to it. The port is then race-prone but
-// adequate for non-parallel tests on a developer machine and CI.
-func freePort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0") //nolint:gosec // G102: localhost only, test scope
-	require.NoError(t, err)
-	port := l.Addr().(*net.TCPAddr).Port
-	require.NoError(t, l.Close())
-	return port
-}
-
 func TestRunOpenStoreFails(t *testing.T) {
 	// A path under a non-existent directory cannot be created.
 	t.Setenv("DB_PATH", "/nonexistent/parent/dir/run_test.db")
-	t.Setenv("PORT", strconv.Itoa(freePort(t)))
 	t.Setenv("REDIS_URL", "")
 	t.Setenv("OIDC_ISSUER", "")
 
@@ -42,7 +28,6 @@ func TestRunOpenStoreFails(t *testing.T) {
 func TestRunRedisStoreFails(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("DB_PATH", filepath.Join(tmpDir, "run_test.db"))
-	t.Setenv("PORT", strconv.Itoa(freePort(t)))
 	// ParseURL on bare string fails immediately, no network round-trip.
 	t.Setenv("REDIS_URL", "not-a-redis-url")
 	t.Setenv("SESSION_TTL", "1h")
@@ -81,19 +66,12 @@ func TestRunGracefulShutdown(t *testing.T) {
 	t.Setenv("OIDC_ISSUER", "")
 
 	errCh := make(chan error, 1)
-	var started atomic.Bool
 	go func() {
-		started.Store(true)
 		errCh <- run()
 	}()
 
-	// Wait until the goroutine has had a chance to register the signal
-	// handler and start the HTTP listener. 200ms is generous; CI
-	// machines under load can be slow.
-	deadline := time.Now().Add(2 * time.Second)
-	for !started.Load() && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	// Give run() time to install its SIGTERM handler before signalling.
+	// 200ms is generous; CI machines under load can be slow.
 	time.Sleep(200 * time.Millisecond)
 
 	// signal.NotifyContext suppresses the default SIGTERM handler while
