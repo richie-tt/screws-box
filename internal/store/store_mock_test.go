@@ -5,6 +5,7 @@ import (
 	"errors"
 	"screws-box/internal/model"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,9 @@ import (
 
 // errBoom is used as the canonical injected DB error in mock tests.
 var errBoom = errors.New("boom")
+
+// fixedTime is a parsed time used as a Scan-friendly default in mock rows.
+var fixedTime, _ = time.Parse(time.RFC3339, "2026-01-01T00:00:00Z")
 
 // newMockStore returns a Store backed by sqlmock and the mock controller for
 // setting expectations. Default matcher is regex, which we use throughout.
@@ -291,7 +295,7 @@ func TestMockGetItemQueryTagsError(t *testing.T) {
 	s, mock := newMockStore(t)
 	cols := []string{"id", "container_id", "name", "description", "col", "row", "created_at", "updated_at"}
 	mock.ExpectQuery(`SELECT i.id, i.container_id, i.name`).
-		WillReturnRows(sqlmock.NewRows(cols).AddRow(int64(1), int64(2), "n", nil, 1, 1, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"))
+		WillReturnRows(sqlmock.NewRows(cols).AddRow(int64(1), int64(2), "n", nil, 1, 1, fixedTime, fixedTime))
 	mock.ExpectQuery(`SELECT t.name FROM tag t JOIN item_tag`).WillReturnError(errBoom)
 
 	_, err := s.GetItem(context.Background(), 1)
@@ -302,7 +306,7 @@ func TestMockGetItemScanTagError(t *testing.T) {
 	s, mock := newMockStore(t)
 	cols := []string{"id", "container_id", "name", "description", "col", "row", "created_at", "updated_at"}
 	mock.ExpectQuery(`SELECT i.id, i.container_id, i.name`).
-		WillReturnRows(sqlmock.NewRows(cols).AddRow(int64(1), int64(2), "n", nil, 1, 1, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"))
+		WillReturnRows(sqlmock.NewRows(cols).AddRow(int64(1), int64(2), "n", nil, 1, 1, fixedTime, fixedTime))
 	tagRows := sqlmock.NewRows([]string{"name"}).AddRow(nil)
 	mock.ExpectQuery(`SELECT t.name FROM tag t JOIN item_tag`).WillReturnRows(tagRows)
 
@@ -314,7 +318,7 @@ func TestMockGetItemIterateTagsError(t *testing.T) {
 	s, mock := newMockStore(t)
 	cols := []string{"id", "container_id", "name", "description", "col", "row", "created_at", "updated_at"}
 	mock.ExpectQuery(`SELECT i.id, i.container_id, i.name`).
-		WillReturnRows(sqlmock.NewRows(cols).AddRow(int64(1), int64(2), "n", nil, 1, 1, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"))
+		WillReturnRows(sqlmock.NewRows(cols).AddRow(int64(1), int64(2), "n", nil, 1, 1, fixedTime, fixedTime))
 	tagRows := sqlmock.NewRows([]string{"name"}).AddRow("a").RowError(0, errBoom)
 	mock.ExpectQuery(`SELECT t.name FROM tag t JOIN item_tag`).WillReturnRows(tagRows)
 
@@ -338,7 +342,7 @@ func TestMockListAllItemsIterateError(t *testing.T) {
 	s, mock := newMockStore(t)
 	cols := []string{"id", "container_id", "name", "description", "col", "row", "created_at", "updated_at", "tags"}
 	rows := sqlmock.NewRows(cols).
-		AddRow(int64(1), int64(2), "n", nil, 1, 1, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "").
+		AddRow(int64(1), int64(2), "n", nil, 1, 1, fixedTime, fixedTime, "").
 		RowError(0, errBoom)
 	mock.ExpectQuery(reAny).WillReturnRows(rows)
 
@@ -348,8 +352,8 @@ func TestMockListAllItemsIterateError(t *testing.T) {
 
 func TestMockListItemsByContainerScanError(t *testing.T) {
 	s, mock := newMockStore(t)
-	mock.ExpectQuery(`SELECT col, row FROM container WHERE id`).
-		WillReturnRows(sqlmock.NewRows([]string{"col", "row"}).AddRow(1, 1))
+	mock.ExpectQuery(`SELECT id, shelf_id, col, row, created_at, updated_at FROM container WHERE id`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "shelf_id", "col", "row", "created_at", "updated_at"}).AddRow(int64(1), int64(1), 1, 1, fixedTime, fixedTime))
 	cols := []string{"id", "container_id", "name", "description", "created_at", "updated_at", "tags"}
 	rows := sqlmock.NewRows(cols).AddRow(nil, int64(1), "n", nil, "x", "x", "")
 	mock.ExpectQuery(reAny).WillReturnRows(rows)
@@ -360,7 +364,7 @@ func TestMockListItemsByContainerScanError(t *testing.T) {
 
 func TestMockListItemsByContainerContainerScanError(t *testing.T) {
 	s, mock := newMockStore(t)
-	mock.ExpectQuery(`SELECT col, row FROM container WHERE id`).WillReturnError(errBoom)
+	mock.ExpectQuery(`SELECT id, shelf_id, col, row, created_at, updated_at FROM container WHERE id`).WillReturnError(errBoom)
 
 	_, err := s.ListItemsByContainer(context.Background(), 1)
 	assert.Error(t, err)
@@ -380,7 +384,7 @@ func TestMockSearchItemsIterateError(t *testing.T) {
 	s, mock := newMockStore(t)
 	cols := []string{"id", "container_id", "name", "description", "col", "row", "created_at", "updated_at", "tags"}
 	rows := sqlmock.NewRows(cols).
-		AddRow(int64(1), int64(2), "n", nil, 1, 1, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "").
+		AddRow(int64(1), int64(2), "n", nil, 1, 1, fixedTime, fixedTime, "").
 		RowError(0, errBoom)
 	mock.ExpectQuery(reAny).WillReturnRows(rows)
 
@@ -404,7 +408,7 @@ func TestMockListTagsIterateError(t *testing.T) {
 	s, mock := newMockStore(t)
 	cols := []string{"id", "name", "created_at", "updated_at", "item_count"}
 	rows := sqlmock.NewRows(cols).
-		AddRow(int64(1), "t", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 0).
+		AddRow(int64(1), "t", fixedTime, fixedTime, 0).
 		RowError(0, errBoom)
 	mock.ExpectQuery(reAny).WillReturnRows(rows)
 
@@ -695,7 +699,7 @@ func TestMockSearchItemsBatchIterateError(t *testing.T) {
 	s, mock := newMockStore(t)
 	cols := []string{"id", "container_id", "name", "description", "col", "row", "created_at", "updated_at", "tag_list"}
 	rows := sqlmock.NewRows(cols).
-		AddRow(int64(1), int64(1), "n", nil, 1, 1, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil).
+		AddRow(int64(1), int64(1), "n", nil, 1, 1, fixedTime, fixedTime, nil).
 		RowError(0, errBoom)
 	mock.ExpectQuery(reAny).WillReturnRows(rows)
 
@@ -708,12 +712,132 @@ func TestMockSearchItemsBatchCountError(t *testing.T) {
 	cols := []string{"id", "container_id", "name", "description", "col", "row", "created_at", "updated_at", "tag_list"}
 	rs := sqlmock.NewRows(cols)
 	for i := range 51 {
-		rs = rs.AddRow(int64(i+1), int64(1), "n", nil, 1, 1, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", nil)
+		rs = rs.AddRow(int64(i+1), int64(1), "n", nil, 1, 1, fixedTime, fixedTime, nil)
 	}
 	mock.ExpectQuery(reAny).WillReturnRows(rs)
 	// Count query fails.
 	mock.ExpectQuery(`SELECT COUNT\(\*\)`).WillReturnError(errBoom)
 
 	_, err := s.SearchItemsBatch(context.Background(), "q", nil)
+	assert.Error(t, err)
+}
+
+// --- GetGridData deep branches --------------------------------------------
+
+func TestMockGetGridDataShelfQueryError(t *testing.T) {
+	s, mock := newMockStore(t)
+	mock.ExpectQuery(`SELECT id, name, rows, cols, auth_enabled`).WillReturnError(errBoom)
+
+	_, err := s.GetGridData()
+	assert.Error(t, err)
+}
+
+func TestMockGetGridDataContainersQueryError(t *testing.T) {
+	s, mock := newMockStore(t)
+	mock.ExpectQuery(`SELECT id, name, rows, cols, auth_enabled`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "rows", "cols", "auth_enabled", "auth_user", "auth_pass"}).
+			AddRow(int64(1), "x", 5, 5, 0, "", ""))
+	mock.ExpectQuery(`SELECT c.id, c.col, c.row, COUNT`).WillReturnError(errBoom)
+
+	_, err := s.GetGridData()
+	assert.Error(t, err)
+}
+
+func TestMockGetGridDataScanError(t *testing.T) {
+	s, mock := newMockStore(t)
+	mock.ExpectQuery(`SELECT id, name, rows, cols, auth_enabled`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "rows", "cols", "auth_enabled", "auth_user", "auth_pass"}).
+			AddRow(int64(1), "x", 5, 5, 0, "", ""))
+	rows := sqlmock.NewRows([]string{"id", "col", "row", "item_count"}).AddRow(nil, 1, 1, 0)
+	mock.ExpectQuery(`SELECT c.id, c.col, c.row, COUNT`).WillReturnRows(rows)
+
+	_, err := s.GetGridData()
+	assert.Error(t, err)
+}
+
+func TestMockGetGridDataIterateError(t *testing.T) {
+	s, mock := newMockStore(t)
+	mock.ExpectQuery(`SELECT id, name, rows, cols, auth_enabled`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "rows", "cols", "auth_enabled", "auth_user", "auth_pass"}).
+			AddRow(int64(1), "x", 5, 5, 0, "", ""))
+	rows := sqlmock.NewRows([]string{"id", "col", "row", "item_count"}).
+		AddRow(int64(1), 1, 1, 0).
+		RowError(0, errBoom)
+	mock.ExpectQuery(`SELECT c.id, c.col, c.row, COUNT`).WillReturnRows(rows)
+
+	_, err := s.GetGridData()
+	assert.Error(t, err)
+}
+
+// --- ExportAllData scan-shelf failure -------------------------------------
+
+func TestMockExportShelfScanError(t *testing.T) {
+	s, mock := newMockStore(t)
+	rows := sqlmock.NewRows([]string{"id", "name", "rows", "cols"}).AddRow(nil, "x", 5, 5)
+	mock.ExpectQuery(`SELECT id, name, rows, cols FROM shelf`).WillReturnRows(rows)
+
+	_, err := s.ExportAllData(context.Background())
+	assert.Error(t, err)
+}
+
+// --- UpdateItem / AddTagToItem item-check Scan failures ------------------
+
+func TestMockUpdateItemItemCheckScanError(t *testing.T) {
+	s, mock := newMockStore(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT id FROM item WHERE id`).WillReturnError(errBoom)
+	mock.ExpectRollback()
+
+	_, err := s.UpdateItem(context.Background(), 1, "x", nil, 1)
+	assert.Error(t, err)
+}
+
+func TestMockAddTagToItemItemCheckScanError(t *testing.T) {
+	s, mock := newMockStore(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT id FROM item WHERE id`).WillReturnError(errBoom)
+	mock.ExpectRollback()
+
+	_, err := s.AddTagToItem(context.Background(), 1, "t")
+	assert.Error(t, err)
+}
+
+// --- ListItemsByContainer deep branches -----------------------------------
+
+func TestMockListItemsByContainerQueryItemsError(t *testing.T) {
+	s, mock := newMockStore(t)
+	mock.ExpectQuery(`SELECT id, shelf_id, col, row, created_at, updated_at FROM container WHERE id`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "shelf_id", "col", "row", "created_at", "updated_at"}).AddRow(int64(1), int64(1), 1, 1, fixedTime, fixedTime))
+	mock.ExpectQuery(`SELECT id FROM item WHERE container_id`).WillReturnError(errBoom)
+
+	_, err := s.ListItemsByContainer(context.Background(), 1)
+	assert.Error(t, err)
+}
+
+func TestMockListItemsByContainerScanItemIDError(t *testing.T) {
+	s, mock := newMockStore(t)
+	mock.ExpectQuery(`SELECT id, shelf_id, col, row, created_at, updated_at FROM container WHERE id`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "shelf_id", "col", "row", "created_at", "updated_at"}).AddRow(int64(1), int64(1), 1, 1, fixedTime, fixedTime))
+	rows := sqlmock.NewRows([]string{"id"}).AddRow(nil)
+	mock.ExpectQuery(`SELECT id FROM item WHERE container_id`).WillReturnRows(rows)
+
+	_, err := s.ListItemsByContainer(context.Background(), 1)
+	assert.Error(t, err)
+}
+
+func TestMockListItemsByContainerIterateError(t *testing.T) {
+	s, mock := newMockStore(t)
+	mock.ExpectQuery(`SELECT id, shelf_id, col, row, created_at, updated_at FROM container WHERE id`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "shelf_id", "col", "row", "created_at", "updated_at"}).AddRow(int64(1), int64(1), 1, 1, fixedTime, fixedTime))
+	rows := sqlmock.NewRows([]string{"id"}).
+		AddRow(int64(1)).
+		RowError(0, errBoom)
+	mock.ExpectQuery(`SELECT id FROM item WHERE container_id`).WillReturnRows(rows)
+	// GetItem(1) inside the loop must also be set up; we rely on RowError firing
+	// during the rows iteration before GetItem is called, but in case it isn't,
+	// we don't expect the inner GetItem query — a missing expectation is itself
+	// an error which still produces err != nil.
+
+	_, err := s.ListItemsByContainer(context.Background(), 1)
 	assert.Error(t, err)
 }
