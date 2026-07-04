@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.10.4](https://github.com/egeek-tech/screws-box/compare/v1.10.3...v1.10.4) (2026-07-04)
+
+
+### Dependencies
+
+* bump actions/attest-build-provenance from 4.1.0 to 4.1.1 ([13a1562](https://github.com/egeek-tech/screws-box/commit/13a1562fd5129e639829d8cbf59b272418f7c75f))
+* bump actions/setup-go from 6.4.0 to 6.5.0 ([82c2ddd](https://github.com/egeek-tech/screws-box/commit/82c2dddad2d43033e9c57aff1fad780e2a03a460))
+* bump github.com/redis/go-redis/v9 from 9.20.1 to 9.21.0 ([140d278](https://github.com/egeek-tech/screws-box/commit/140d278aeb50b62646d23f64775c0ebfc06dfd6e))
+* bump golang from `7a3e500` to `3ad5730` ([5fd6bbb](https://github.com/egeek-tech/screws-box/commit/5fd6bbb1c6422f3ba4de9b7772e2629fc0bc97f6))
+* bump modernc.org/sqlite from 1.52.0 to 1.53.0 ([7a21120](https://github.com/egeek-tech/screws-box/commit/7a21120b36c1400e77c68b57fa1cbdc6eb6eed8f))
+
 ## [1.10.3](https://github.com/egeek-tech/screws-box/compare/v1.10.2...v1.10.3) (2026-06-21)
 
 
