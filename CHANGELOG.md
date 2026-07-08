@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.10.5](https://github.com/egeek-tech/screws-box/compare/v1.10.4...v1.10.5) (2026-07-08)
+
+
+### Dependencies
+
+* Bump docker/build-push-action from 7.2.0 to 7.3.0 ([3d8cfdb](https://github.com/egeek-tech/screws-box/commit/3d8cfdb44d0290fc46386f740029124881e02e4d))
+* Bump docker/login-action from 4.2.0 to 4.4.0 ([3f0b1e0](https://github.com/egeek-tech/screws-box/commit/3f0b1e041dc54399992aa8a6aad7b9deb12780e3))
+* Bump docker/metadata-action from 6.1.0 to 6.2.0 ([8800b31](https://github.com/egeek-tech/screws-box/commit/8800b31f55b796bd3c547d458229635b11c0ad47))
+
 ## [1.10.4](https://github.com/egeek-tech/screws-box/compare/v1.10.3...v1.10.4) (2026-07-04)
 
 
