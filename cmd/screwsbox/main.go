@@ -19,7 +19,7 @@ import (
 
 // Release Please manages the literal on the next line at each Release PR.
 // The Docker build overrides it via -ldflags "-X main.version=<tag>".
-var version = "1.10.5" // x-release-please-version
+var version = "1.10.6" // x-release-please-version
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
