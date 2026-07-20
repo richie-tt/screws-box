@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.10.6](https://github.com/egeek-tech/screws-box/compare/v1.10.5...v1.10.6) (2026-07-20)
+
+
+### Dependencies
+
+* Bump actions/setup-go from 6.5.0 to 7.0.0 ([dc93736](https://github.com/egeek-tech/screws-box/commit/dc93736bc424584f42c8e2d06a943f468951074b))
+* Bump github.com/coreos/go-oidc/v3 from 3.19.0 to 3.20.0 ([2f61544](https://github.com/egeek-tech/screws-box/commit/2f615449bfb367a78c333a26f9f8cf201f75c60e))
+* Bump github.com/go-chi/chi/v5 from 5.3.0 to 5.3.1 ([0fe6121](https://github.com/egeek-tech/screws-box/commit/0fe6121ff72809a14d8725f4f681f4372eb8806e))
+* Bump golang from `3ad5730` to `0178a64` ([9bb607b](https://github.com/egeek-tech/screws-box/commit/9bb607b0e731760c5068b32dad8c4ec2b475b266))
+* Bump golang.org/x/crypto from 0.53.0 to 0.54.0 ([34fac91](https://github.com/egeek-tech/screws-box/commit/34fac91f13eb8d26a1a33332be12d5e3e3a282ac))
+* Bump modernc.org/sqlite from 1.53.0 to 1.54.0 ([01f599e](https://github.com/egeek-tech/screws-box/commit/01f599e1635fa1e4ba46407c0144d6834a302a64))
+
 ## [1.10.5](https://github.com/egeek-tech/screws-box/compare/v1.10.4...v1.10.5) (2026-07-08)
 
 
