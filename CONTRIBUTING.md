@@ -6,7 +6,7 @@ it from there.
 
 ## Prerequisites
 
-- **Go 1.26.4+** (matches the `go` directive in [`go.mod`](./go.mod)).
+- **Go 1.26.5+** (matches the `go` directive in [`go.mod`](./go.mod)).
 - [`pre-commit`](https://pre-commit.com) for the format/lint hooks.
 - Optional: Docker / Docker Compose to exercise the container path.
 
